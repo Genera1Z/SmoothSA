@@ -49,7 +49,7 @@ Performance values of other baselines:
 
 **Object recognition**:
 
-|                          | class top1 | class top3 |  box iou  | matched num |
+|                          | class top1 | class top3 |  box iou  | #match |
 |--------------------------|:----------:|:----------:|:---------:|:-----------:|
 | smoothsa_r_recogn-coco   |  81.28±0.1 |  92.94±0.2 | 39.87±0.3 |   6658±28   |
 | smoothsav_r_recogn-ytvis |  32.53±1.5 |  69.76±2.5 | 43.26±0.7 |   8820±46   |
