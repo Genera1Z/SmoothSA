@@ -49,9 +49,13 @@ Performance values of other baselines:
 
 **Object recognition**:
 
-||||||||||||
+|                          | class top1 | class top3 |  box iou  | matched num |
+|--------------------------|:----------:|:----------:|:---------:|:-----------:|
+| smoothsa_r_recogn-coco   |  81.28±0.1 |  92.94±0.2 | 39.87±0.3 |   6658±28   |
+| smoothsav_r_recogn-ytvis |  32.53±1.5 |  69.76±2.5 | 43.26±0.7 |   8820±46   |
+| spot_r_recogn-coco       |  80.70±0.3 |  92.63±0.1 | 38.43±0.1 |   6528±36   |
 
-Performance values of baseline **RandSF.Q**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-performance).
+For performance values of baseline **RandSF.Q**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-performance).
 
 
 ### (2) Old Performance Values
