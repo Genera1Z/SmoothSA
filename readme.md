@@ -138,6 +138,9 @@ Datasets ClevrTex, COCO, VOC, MOVi-C, MOVi-D and YTVIS, that are converted into 
     - My implementation of paper **SPOT: Self-Training with Patch-Order Permutation for Object-Centric Learning with Autoregressive Transformers**, CVPR 2024.
 - For other image OCL baselines, **SLATE**, **DINOSAUR**, **SlotDiffusion** and **DIAS**, please check repo [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL?tab=readme-ov-file#-model-checkpoints--training-logs) and [DIAS](https://github.com/Genera1Z/DIAS?tab=readme-ov-file#-model-checkpoints--training-logs);
 - For other video OCL baselines, **VideoSAUR**, **SlotContrast** and **RandSF.Q**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-model-checkpoints--training-logs).
+- [archive-recogn](https://github.com/Genera1Z/SmoothSA/releases/tag/archive-recogn): Object recognition models based on our SmoothSA and baseline SPOT, trained on datasets COCO and YTVIS.
+    - Slots extracted by SmoothSA or SPOT are matched with ground-truth object segmentations by threshold 1e-1@IoU, and the matched slots are used to train category classification and bounding box regression.
+- For other object recognition baselines, **RandSF.Q** and **SlotContrast**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-model-checkpoints--training-logs).
 
 
 
