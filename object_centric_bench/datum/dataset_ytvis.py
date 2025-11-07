@@ -13,6 +13,7 @@ import torch as pt
 import torch.nn.functional as ptnf
 import torch.utils.data as ptud
 
+from .dataset import lmdb_open_read, lmdb_open_write
 from ..util_datum import draw_segmentation_np, mask_segment_to_bbox_np
 
 
@@ -48,22 +49,15 @@ class YTVIS(ptud.Dataset):
         data_file,
         extra_keys=["segment", "bbox", "clazz"],
         transform=lambda **_: _,
-        max_spare=4,
         base_dir: Path = None,
         ts=20,  # least number of time steps
     ):
         if base_dir:
             data_file = base_dir / data_file
-        self.env = lmdb.open(
-            str(data_file),
-            subdir=False,
-            readonly=True,
-            readahead=False,
-            meminit=False,
-            max_spare_txns=max_spare,
-            lock=False,
-        )
-        with self.env.begin(write=False) as txn:
+        self.data_file = data_file
+
+        env = lmdb_open_read(data_file)
+        with env.begin(write=False) as txn:
             self_keys = pkl.loads(txn.get(b"__keys__"))
         print(len(self_keys))
 
@@ -71,7 +65,7 @@ class YTVIS(ptud.Dataset):
         print(f"[{__class__.__name__}] slicing samples in dataset...")
         t0 = time.time()
         for key in self_keys:
-            with self.env.begin(write=False) as txn:
+            with env.begin(write=False) as txn:
                 sample = pkl.loads(txn.get(key))
             t = len(sample["video"])
             if t < ts:
@@ -84,6 +78,7 @@ class YTVIS(ptud.Dataset):
                     start = end - ts
                 self.keys.append([key, start])
         print(f"[{__class__.__name__}] {time.time() - t0}")
+        env.close()
 
         self.extra_keys = extra_keys
         self.transform = transform
@@ -96,6 +91,9 @@ class YTVIS(ptud.Dataset):
         - bbox: (t,s,c=4), float32. both side normalized ltrb, only foreground
         - clazz: (t,s), uint8. only foreground
         """
+        if not hasattr(self, "env"):  # torch>2.6
+            self.env = lmdb_open_read(self.data_file)
+
         key, start = self.keys[index]
         with self.env.begin(write=False) as txn:
             sample0 = pkl.loads(txn.get(key))
@@ -232,13 +230,7 @@ class YTVIS(ptud.Dataset):
                 track_infos[tinfo["video_id"]].append(tinfo)
 
             lmdb_file = dst_dir / f"{split}.lmdb"
-            lmdb_env = lmdb.open(
-                str(lmdb_file),
-                map_size=1024**4,
-                subdir=False,
-                readonly=False,
-                meminit=False,
-            )
+            lmdb_env = lmdb_open_write(lmdb_file)
 
             keys = []
             txn = lmdb_env.begin(write=True)
@@ -350,7 +342,7 @@ class YTVIS(ptud.Dataset):
 
         segment_viz = None
         if segment is not None and segment.shape[3]:
-            assert segment.ndim == 4 and segment.dtype == np.bool
+            assert segment.ndim == 4 and segment.dtype == bool
 
             if bbox is not None:
                 assert (

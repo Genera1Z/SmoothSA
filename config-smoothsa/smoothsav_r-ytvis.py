@@ -10,7 +10,8 @@ from object_centric_bench.datum import (
     CenterCrop,
     Lambda,
     YTVIS,
-    PadToMax1,
+    ClPadToMax1,
+    DefaultCollate,
 )
 from object_centric_bench.learn import (
     Adam,
@@ -44,7 +45,7 @@ from object_centric_bench.model import (
     TransformerDecoder,
     TransformerDecoderLayer,
 )
-from object_centric_bench.util import Compose
+from object_centric_bench.util import Compose, ComposeNoStar
 from object_centric_bench.util_model import interpolat_argmax_attent
 
 ### global
@@ -98,7 +99,13 @@ dataset_v = dict(
     transform=dict(type=Compose, transforms=transform_v),
     base_dir=...,
 )
-collate_fn_t = dict(type=PadToMax1, keys=["segment"], dims=[3])
+collate_fn_t = dict(
+    type=ComposeNoStar,
+    transforms=[
+        dict(type=ClPadToMax1, keys=["segment"], dims=[3]),
+        dict(type=DefaultCollate),
+    ],
+)
 collate_fn_v = collate_fn_t
 
 ### model

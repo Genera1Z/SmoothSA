@@ -97,7 +97,7 @@ class HandleLog(Callback):
             and all(isinstance(_, list) for _ in ikeys)
             and all(all(isinstance(__, str) for __ in _) for _ in ikeys)
         )
-        assert len(ikeys) == len(ops)
+        assert len(ikeys) == len(ops)  # mean sum ...
 
         self.ikeys = ikeys  # list of list of str
         if okeys is None:

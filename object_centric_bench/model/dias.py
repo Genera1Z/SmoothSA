@@ -58,10 +58,11 @@ class ARRandTransformerDecoder(nn.Module):
             )
             layer.multihead_attn.register_forward_hook(interact_hook_forward)
 
-    def forward(self, input, slots, p=0.5):
+    def forward(self, input, slots, smask=None, p=0.5):
         """
         input: target to be destructed, shape=(b,m=h*w,c)
         slots: slots, shape=(b,n,c)
+        smask: slots' mask, shape=(b,n), dtype=bool. True means there is a valid slot.
         """
         b, m, c = input.shape
         assert m == self.posit_embed.pe.size(1)
@@ -121,7 +122,9 @@ class ARRandTransformerDecoder(nn.Module):
             )
 
         memory = self.project2(slots)
-        autoreg = self.backbone(self.norm0(query), memory=memory)
+        autoreg = self.backbone(
+            self.norm0(query), memory=memory, memory_key_padding_mask=smask
+        )
         recon = self.readout(autoreg)  # (b,m,c)
         _, _, d = recon.shape
 

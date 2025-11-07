@@ -28,7 +28,7 @@ def mask_segment_to_bbox_np(segment):
     - segment: mask format, shape=(h,w,s)
     - bbox: ltrb format, shape=(s,c=4)
     """
-    assert segment.ndim == 3 and segment.dtype == np.bool
+    assert segment.ndim == 3 and segment.dtype == bool
     h, w, s = segment.shape
     y = np.arange(h)[:, None, None]
     x = np.arange(w)[None, :, None]

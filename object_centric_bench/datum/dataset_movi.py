@@ -10,6 +10,7 @@ import torch as pt
 import torch.nn.functional as ptnf
 import torch.utils.data as ptud
 
+from .dataset import lmdb_open_read, lmdb_open_write
 from ..util_datum import draw_segmentation_np, VideoCodec, mask_segment_to_bbox_np
 
 
@@ -44,22 +45,17 @@ class MOVi(ptud.Dataset):
         data_file,
         extra_keys=["segment", "bbox", "flow", "depth"],
         transform=lambda **_: _,
-        max_spare=4,
         base_dir: Path = None,
     ):
         if base_dir:
             data_file = base_dir / data_file
-        self.env = lmdb.open(
-            str(data_file),
-            subdir=False,
-            readonly=True,
-            readahead=False,
-            meminit=False,
-            max_spare_txns=max_spare,
-            lock=False,
-        )
-        with self.env.begin(write=False) as txn:
+        self.data_file = data_file
+
+        env = lmdb_open_read(data_file)
+        with env.begin(write=False) as txn:
             self.idxs = pkl.loads(txn.get(b"__keys__"))
+        env.close()
+
         self.extra_keys = extra_keys
         self.transform = transform
 
@@ -71,6 +67,9 @@ class MOVi(ptud.Dataset):
         - flow: (t,c=3,h,w), uint8 -> float32
         - depth: (t,c=1,h,w), float32
         """
+        if not hasattr(self, "env"):  # torch>2.6
+            self.env = lmdb_open_read(self.data_file)
+
         with self.env.begin(write=False) as txn:
             sample0 = pkl.loads(txn.get(self.idxs[index]))
         sample1 = {}
@@ -193,13 +192,7 @@ class MOVi(ptud.Dataset):
             )
 
             dst_file = dst_dir / f"{split}.lmdb"
-            lmdb_env = lmdb.open(
-                str(dst_file),
-                map_size=1024**4,
-                subdir=False,
-                readonly=False,
-                meminit=False,
-            )
+            lmdb_env = lmdb_open_write(dst_file)
 
             keys = []
             txn = lmdb_env.begin(write=True)
@@ -389,14 +382,14 @@ class MOVi(ptud.Dataset):
         assert video.ndim == 4 and video.shape[3] == 3 and video.dtype == np.uint8
 
         if segment is not None:
-            assert segment.ndim == 4 and segment.dtype == np.bool
+            assert segment.ndim == 4 and segment.dtype == bool
 
         if bbox is not None and bbox.shape[0]:
             assert bbox.ndim == 3 and bbox.shape[2] == 4 and bbox.dtype == np.float32
             t, h, w, c = video.shape
             bbox[:, :, 0::2] *= w
             bbox[:, :, 1::2] *= h
-            bbox = bbox.astype("int")
+            bbox = np.round(bbox).astype("int")
 
         if flow is not None:
             assert flow.ndim == 4 and flow.shape[3] == 3 and flow.dtype == np.uint8

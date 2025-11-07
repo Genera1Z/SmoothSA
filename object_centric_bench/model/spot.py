@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from einops import rearrange
+from einops import rearrange, repeat
 import numpy as np
 import torch as pt
 import torch.nn as nn

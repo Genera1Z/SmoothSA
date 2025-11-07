@@ -9,6 +9,7 @@ import torch as pt
 import torch.nn.functional as ptnf
 import torch.utils.data as ptud
 
+from .dataset import lmdb_open_read, lmdb_open_write
 from ..util_datum import draw_segmentation_np
 
 
@@ -37,22 +38,17 @@ class PascalVOC(ptud.Dataset):
         data_file,
         extra_keys=["segment"],
         transform=lambda **_: _,
-        max_spare=4,
         base_dir: Path = None,
     ):
         if base_dir:
             data_file = base_dir / data_file
-        self.env = lmdb.open(
-            str(data_file),
-            subdir=False,
-            readonly=True,
-            readahead=False,
-            meminit=False,
-            max_spare_txns=max_spare,
-            lock=False,
-        )
-        with self.env.begin(write=False) as txn:
+        self.data_file = data_file
+
+        env = lmdb_open_read(data_file)
+        with env.begin(write=False) as txn:
             self.idxs = pkl.loads(txn.get(b"__keys__"))
+        env.close()
+
         self.extra_keys = extra_keys
         self.transform = transform
 
@@ -61,6 +57,9 @@ class PascalVOC(ptud.Dataset):
         - image: shape=(c=3,h,w), uint8 | float32
         - segment: shape=(h,w,s), uint8 -> bool
         """
+        if not hasattr(self, "env"):  # torch>2.6
+            self.env = lmdb_open_read(self.data_file)
+
         with self.env.begin(write=False) as txn:
             sample0 = pkl.loads(txn.get(self.idxs[index]))
         sample1 = {}
@@ -142,13 +141,7 @@ class PascalVOC(ptud.Dataset):
             segment_files.sort()
 
             dst_file = dst_dir / f"{split}.lmdb"
-            lmdb_env = lmdb.open(
-                str(dst_file),
-                map_size=1024**4,
-                subdir=False,
-                readonly=False,
-                meminit=False,
-            )
+            lmdb_env = lmdb_open_write(dst_file)
 
             keys = []
             txn = lmdb_env.begin(write=True)
@@ -221,7 +214,7 @@ class PascalVOC(ptud.Dataset):
 
         segment_viz = None
         if segment is not None:
-            assert segment.ndim == 3 and segment.dtype == np.bool
+            assert segment.ndim == 3 and segment.dtype == bool
             segment_viz = draw_segmentation_np(image, segment, alpha=0.75)
             cv2.imshow("s", cv2.cvtColor(segment_viz, cv2.COLOR_RGB2BGR))
 

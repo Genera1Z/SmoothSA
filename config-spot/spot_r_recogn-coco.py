@@ -11,7 +11,8 @@ from object_centric_bench.datum import (
     CenterCrop,
     Lambda,
     MSCOCO,
-    PadToMax1,
+    ClPadToMax1,
+    DefaultCollate,
     Xywh2Ltrb,
 )
 from object_centric_bench.learn import (
@@ -31,7 +32,7 @@ from object_centric_bench.model import (
     MLP,
     ObjDiscovRecogn,
 )
-from object_centric_bench.util import Compose
+from object_centric_bench.util import Compose, ComposeNoStar
 from object_centric_bench.util_model import interpolat_argmax_attent
 
 ### global
@@ -84,7 +85,11 @@ dataset_v = dict(
     base_dir=...,
 )
 collate_fn_t = dict(  # (b,h,w,s) (b,s,c) (b,s)
-    type=PadToMax1, keys=["segment", "bbox", "clazz"], dims=[2, 0, 0]
+    type=ComposeNoStar,
+    transforms=[
+        dict(type=ClPadToMax1, keys=["segment", "bbox", "clazz"], dims=[2, 0, 0]),
+        dict(type=DefaultCollate),
+    ],
 )
 collate_fn_v = collate_fn_t
 

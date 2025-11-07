@@ -10,6 +10,7 @@ import torch as pt
 import torch.nn.functional as ptnf
 import torch.utils.data as ptud
 
+from .dataset import lmdb_open_read, lmdb_open_write
 from ..util_datum import draw_segmentation_np, mask_segment_to_bbox_np
 
 
@@ -41,22 +42,17 @@ class MSCOCO(ptud.Dataset):
         extra_keys=["segment", "bbox", "clazz"],
         transform=lambda **_: _,
         mode="instance",  # instance panoptic
-        max_spare=4,
         base_dir: Path = None,
     ):
         if base_dir:
             data_file = base_dir / data_file
-        self.env = lmdb.open(
-            str(data_file),
-            subdir=False,
-            readonly=True,
-            readahead=False,
-            meminit=False,
-            max_spare_txns=max_spare,
-            lock=False,
-        )
-        with self.env.begin(write=False) as txn:
+        self.data_file = data_file
+
+        env = lmdb_open_read(data_file)
+        with env.begin(write=False) as txn:
             self.idxs = pkl.loads(txn.get(b"__keys__"))
+        env.close()
+
         self.extra_keys = extra_keys
         self.transform = transform
         assert mode in ["instance", "panoptic"]
@@ -69,6 +65,9 @@ class MSCOCO(ptud.Dataset):
         - bbox: shape=(s,c=4), float32, ltrb
         - clazz: shape=(s,), uint8
         """
+        if not hasattr(self, "env"):  # torch>2.6
+            self.env = lmdb_open_read(self.data_file)
+
         with self.env.begin(write=False) as txn:
             sample0 = pkl.loads(txn.get(self.idxs[index]))
         sample1 = {}
@@ -203,13 +202,7 @@ class MSCOCO(ptud.Dataset):
             annotations = annotations["annotations"]
 
             dst_file = dst_dir / f"{split}.lmdb"
-            lmdb_env = lmdb.open(
-                str(dst_file),
-                map_size=1024**4,
-                subdir=False,
-                readonly=False,
-                meminit=False,
-            )
+            lmdb_env = lmdb_open_write(dst_file)
 
             keys = []
             txn = lmdb_env.begin(write=True)
@@ -268,7 +261,7 @@ class MSCOCO(ptud.Dataset):
                 assert type(image_b) == bytes
                 assert segment.ndim == 2 and segment.dtype == np.uint8
                 assert clazz.ndim == 1 and clazz.dtype == np.uint8
-                assert isthing.ndim == 1 and isthing.dtype == np.bool
+                assert isthing.ndim == 1 and isthing.dtype == bool
                 assert (
                     len(set(np.unique(segment)) - {0})
                     == clazz.shape[0]
@@ -310,7 +303,7 @@ class MSCOCO(ptud.Dataset):
 
         segment_viz = None
         if segment is not None and segment.shape[2]:
-            assert segment.ndim == 3 and segment.dtype == np.bool
+            assert segment.ndim == 3 and segment.dtype == bool
             segment_viz = draw_segmentation_np(image, segment, alpha=0.75)
 
             if bbox is not None:

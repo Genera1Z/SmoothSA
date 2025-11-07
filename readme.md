@@ -83,6 +83,7 @@ For performance values of baseline **RandSF.Q**, please check repo [RandSF.Q](ht
 
 ## 🚑️ Changelogs
 
+- [2025/11/07] Fix ``lmdb`` multiprocessing issues due to ``torch>=3.7``.
 - ⭐⭐⭐ [2025/10/21] ⭐⭐⭐ **Object discovery accuracy values are updated for version 3. Check this table file [acc-v3.xlsx](acc-v3.xlsx) for details**.
 - [2025/10/20] Version 3 (based on [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL)): re-implement segmentation evaluation; corresponding new dataset lmdb files are uploaded. Thus, object discovery acc could change a little, especially ARI values.
 

@@ -33,7 +33,7 @@ def hungarian_matching(iou_all, maximize=True):
 
     iou_all: shape=(b,c,d), dtype=float32
     """
-    iou_all_ = iou_all.detach().cpu().numpy()
+    iou_all_ = iou_all.detach().cpu().contiguous().numpy()
     # print(iou_all_.shape)
     rcidx = list(map(lambda _: linear_sum_assignment(_, maximize=maximize), iou_all_))
 
