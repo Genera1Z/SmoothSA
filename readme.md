@@ -1,4 +1,4 @@
-# SmoothSA : Smoothing Slot Attention Iterations and Recurrences
+# `SmoothSA` Smoothing Slot Attention Iterations and Recurrences
 
 
 
