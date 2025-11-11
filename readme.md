@@ -224,7 +224,7 @@ If you are applying OCL (not limited to this repo) to tasks like **visual questi
 
 ## ⚗️ Further Research
 
-My further research works on OCL can be found in [my repos](https://github.com/Genera1Z?tab=repositories).
+My further research works on OCL can be found in [my repos](https://github.com/Genera1Z?tab=repositories) or [my academic page](https://genera1z.github.io).
 
 
 
