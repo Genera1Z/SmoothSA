@@ -1,4 +1,8 @@
 """
+Copyright (c) 2024 Genera1Z
+https://github.com/Genera1Z
+"""
+"""
 Reasoning-Enhanced Object-Centric Learning for Videos
 https://github.com/intell-sci-comput/STATM
 
@@ -90,3 +94,4 @@ class RSFQTransit(nn.Module):
 
         query = self.transit(slotz, encode)
         return query
+
