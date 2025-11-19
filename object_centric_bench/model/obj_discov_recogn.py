@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2024 Genera1Z
+https://github.com/Genera1Z
+"""
 from einops import rearrange, repeat
 import numpy as np
 import torch as pt
@@ -120,3 +124,4 @@ class ObjDiscovRecogn(nn.Module):
         boxgt2 = pt.concat(boxgt2)  # (??,)
 
         return slotz2, clsgt2, boxgt2, rcidx2
+
