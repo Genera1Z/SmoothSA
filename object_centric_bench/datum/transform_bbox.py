@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2024 Genera1Z
+https://github.com/Genera1Z
+"""
 import torch as pt
 
 from ..util import DictTool
@@ -53,3 +57,4 @@ class Xywh2Ltrb(Ltrb2Xywh):
         ltrb = pt.stack([l, t, r, b], 1)  # (n,c=4)
         assert ltrb.ndim == 2 and ltrb.size(1) == 4
         return ltrb
+
