@@ -1,3 +1,7 @@
+"""
+Copyright (c) 2024 Genera1Z
+https://github.com/Genera1Z
+"""
 from collections import defaultdict
 from pathlib import Path
 import json
