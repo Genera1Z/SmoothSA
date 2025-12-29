@@ -14,11 +14,11 @@ from object_centric_bench.util import Config, build_from_config
 
 
 @pt.inference_mode()
-def val_epoch(cfg, dataset_v, model, loss_fn, acc_fn_v, callback_v):
+def val_epoch(cfg, dataset_v, model, loss_fn_v, acc_fn_v, callback_v):
     pack = Config({})
     pack.dataset_v = dataset_v
     pack.model = model
-    pack.loss_fn = loss_fn
+    pack.loss_fn_v = loss_fn_v
     pack.acc_fn_v = acc_fn_v
     pack.callback_v = callback_v
     pack.epoch = 0
@@ -42,7 +42,7 @@ def val_epoch(cfg, dataset_v, model, loss_fn, acc_fn_v, callback_v):
         with pt.autocast("cuda", enabled=True):
             pack.output = pack.model(**pack)
             [_.after_forward(**pack) for _ in pack.callback_v]
-            pack.loss = pack.loss_fn(**pack)
+            pack.loss = pack.loss_fn_v(**pack)
         pack.acc = pack.acc_fn_v(**pack)
 
         if 0:  # TODO XXX
@@ -134,7 +134,7 @@ def main_eval_single(
     dataset_v = build_from_config(cfg.dataset_v)
     dataload_v = DataLoader(
         dataset_v,
-        cfg.batch_size_v // 2,  # TODO XXX
+        cfg.batch_size_v,  # TODO XXX // 2
         shuffle=False,
         num_workers=cfg.num_work,
         collate_fn=build_from_config(cfg.collate_fn_v),
@@ -157,7 +157,7 @@ def main_eval_single(
 
     ## learn init
 
-    loss_fn = MetricWrap(**build_from_config(cfg.loss_fn))
+    loss_fn_v = MetricWrap(**build_from_config(cfg.loss_fn_v))
     acc_fn_v = MetricWrap(detach=True, **build_from_config(cfg.acc_fn_v))
 
     cfg.callback_v = [_ for _ in cfg.callback_v if _.type.__name__ != "SaveModel"]
@@ -168,7 +168,7 @@ def main_eval_single(
 
     ## do eval
 
-    pack2 = val_epoch(cfg, dataload_v, model, loss_fn, acc_fn_v, callback_v)
+    pack2 = val_epoch(cfg, dataload_v, model, loss_fn_v, acc_fn_v, callback_v)
 
     ## dump data
 
@@ -253,9 +253,9 @@ def main_eval_multi():
         for ckptf in ckptfs:
             ckptf = Path(ckptf)
             cname = ckptf.parent.name
-            seed = int(ckptf.name.split("-")[0])
             assert cname == cfgf.name[:-3]
-            print(f"###\n{cname}\n###")
+            seed = int(ckptf.name.split("-")[0])
+            print(f"###\n{cname}-{seed}\n###")
             print(cfgf.as_posix(), ckptf.as_posix())
             eval_info = main_eval_single(cfgf, ckptf)
             values = [eval_info[_] for _ in keys]

@@ -2,7 +2,6 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
-from itertools import product
 import torch as pt
 import torch.nn.functional as ptnf
 

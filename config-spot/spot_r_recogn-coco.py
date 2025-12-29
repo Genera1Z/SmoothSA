@@ -141,7 +141,7 @@ optimiz = dict(type=Adam, params=param_groups, lr=lr)
 gscale = dict(type=GradScaler)
 gclip = None
 
-loss_fn = dict(
+loss_fn_t = loss_fn_v = dict(
     ce=dict(
         metric=dict(type=CrossEntropyLoss),
         map=dict(input="output.clspd", target="output.clsgt"),

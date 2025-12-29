@@ -102,7 +102,7 @@ collate_fn_t = dict(
     type=ComposeNoStar,
     transforms=[
         dict(type=ClPadToMax1, keys=["segment"], dims=[3]),
-        dict(type=ClPadTo1, keys=["bbox"], dims=[1], num=[max_num]),
+        dict(type=ClPadTo1, keys=["bbox"], dims=[1], num=None, value=-1),
         dict(type=DefaultCollate),
     ],
 )
@@ -130,11 +130,7 @@ model = dict(
         type=MLP, in_dim=vfm_dim, dims=[vfm_dim, vfm_dim], ln="pre", dropout=0.0
     ),
     initializ=dict(
-        type=NormalMlpPreheated,
-        in_dim=4,
-        dims=[emb_dim, emb_dim],
-        kv_dim=vfm_dim,
-        ln="pre",
+        type=NormalMlpPreheated, in_dim=4, dims=[emb_dim, emb_dim], kv_dim=vfm_dim
     ),
     aggregat=dict(
         type=SlotAttention,
@@ -212,7 +208,7 @@ optimiz = dict(type=Adam, params=param_groups, lr=lr)
 gscale = dict(type=GradScaler)
 gclip = dict(type=ClipGradNorm, max_norm=0.05)
 
-loss_fn = dict(
+loss_fn_t = loss_fn_v = dict(
     recon=dict(
         metric=dict(type=MSELoss),
         map=dict(input="output.recon", target="output.feature"),

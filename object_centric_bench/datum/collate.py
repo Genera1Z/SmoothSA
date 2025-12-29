@@ -48,11 +48,11 @@ class ClPadToMax1:
 class ClPadTo1:
     """Collate Pad To 1 dimension."""
 
-    def __init__(self, keys: list, dims: list, num: list, mode="right", value=0):
+    def __init__(self, keys: list, dims: list, num: list=None, mode="right", value=0):
         assert len(keys) == len(dims)
         self.keys = keys
         self.dims = dims
-        if num is not None:
+        if num is not None:  # None: auto pad to max ``dim`` size
             assert len(keys) == len(num)
         self.num = num
         self.mode = mode
@@ -61,10 +61,14 @@ class ClPadTo1:
     def __call__(self, samples: list) -> list:
         for i, (key, dim) in enumerate(zip(self.keys, self.dims)):
             inputs = [DictTool.getattr(_, key) for _ in samples]
+            if self.num is None:
+                numi = max(_.size(dim) for _ in inputs)
+            else:
+                numi = self.num[i]
 
             for sample, input in zip(samples, inputs):
                 left, right = PadTo1.calc_padding(
-                    self.num[i], input.size(dim), self.mode
+                    numi, input.size(dim), self.mode
                 )
                 output = PadTo1.pad1(input, dim, left, right, self.value)
                 DictTool.setattr(sample, key, output)

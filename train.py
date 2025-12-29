@@ -34,7 +34,7 @@ def train_epoch(pack):
         with pt.autocast("cuda", enabled=True):
             pack.output = pack.model(**pack)
             [_.after_forward(**pack) for _ in pack.callback_t]
-            pack.loss = pack.loss_fn(**pack)  # {k:(loss,valid),..}
+            pack.loss = pack.loss_fn_t(**pack)  # {k:(loss,valid),..}
         # for pack.loss/acc
         # - value: dtype=float, shape=(b,). but actually (b=1,) for loss
         # - valid: dtype=bool, shape=(b,). but actually (b=1,) for loss
@@ -81,7 +81,7 @@ def val_epoch(pack):
         with pt.autocast("cuda", enabled=True):
             pack.output = pack.model(**pack)
             [_.after_forward(**pack) for _ in pack.callback_v]
-            pack.loss = pack.loss_fn(**pack)
+            pack.loss = pack.loss_fn_v(**pack)
         pack.acc = pack.acc_fn_v(**pack)  # in autocast may cause inf
 
         [_.after_step(**pack) for _ in pack.callback_v]
@@ -173,7 +173,7 @@ def main(args):
         model.freez(cfg.freez)
 
     model = model.cuda()
-    # model.compile()  # TODO XXX comment this for debugging
+    model.compile()  # TODO XXX comment this for debugging
 
     ## learn init
 
@@ -185,12 +185,12 @@ def main(args):
     optimiz.gscale = build_from_config(cfg.gscale)
     optimiz.gclip = build_from_config(cfg.gclip)
 
-    loss_fn = MetricWrap(**build_from_config(cfg.loss_fn))
+    loss_fn_t = MetricWrap(**build_from_config(cfg.loss_fn_t))
+    loss_fn_v = MetricWrap(**build_from_config(cfg.loss_fn_v))
     # loss_fn.compile()  # sometimes nan ???
     acc_fn_t = MetricWrap(detach=True, **build_from_config(cfg.acc_fn_t))
     acc_fn_v = MetricWrap(detach=True, **build_from_config(cfg.acc_fn_v))
-    # acc_fn_t.compile()  # sometimes nan ???
-    # acc_fn_v.compile()  # sometimes nan ???
+    # acc_fn.compile()  # sometimes nan ???
 
     for cb in cfg.callback_t + cfg.callback_v:
         if cb.type.__name__ in ["AverageLog", "HandleLog"]:
@@ -206,7 +206,8 @@ def main(args):
     pack.dataset_v = dataload_v
     pack.model = model
     pack.optimiz = optimiz
-    pack.loss_fn = loss_fn
+    pack.loss_fn_t = loss_fn_t
+    pack.loss_fn_v = loss_fn_v
     pack.acc_fn_t = acc_fn_t
     pack.acc_fn_v = acc_fn_v
     pack.callback_t = callback_t
@@ -261,7 +262,7 @@ def parse_args():
         "--ckpt_file",
         type=str,
         nargs="+",
-        default="archive-randsfq-tsim/randsfq_r-ytvis/42-0155.pth",
+        # default="archive-randsfq-tsim/randsfq_r-ytvis/42-0155.pth",
         # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-smoothsa/save/smoothsa_r-coco/42-0021.pth",
         # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-spot/save/spot_r-coco/42-0020.pth",
         # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-smoothsav-vvv/save/smoothsav_r-ytvis/42-0159.pth",

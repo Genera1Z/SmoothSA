@@ -54,7 +54,7 @@ class YTVIS(ptud.Dataset):
         extra_keys=["segment", "bbox", "clazz"],
         transform=lambda **_: _,
         base_dir: Path = None,
-        ts=20,  # least number of time steps
+        ts=None,  # least number of time steps
     ):
         if base_dir:
             data_file = base_dir / data_file
@@ -65,23 +65,27 @@ class YTVIS(ptud.Dataset):
             self_keys = pkl.loads(txn.get(b"__keys__"))
         print(len(self_keys))
 
-        self.keys = []
-        print(f"[{__class__.__name__}] slicing samples in dataset...")
-        t0 = time.time()
-        for key in self_keys:
-            with env.begin(write=False) as txn:
-                sample = pkl.loads(txn.get(key))
-            t = len(sample["video"])
-            if t < ts:
-                continue
-            num = int(np.ceil(t / ts))  # split ts>20 into multiple
-            for i in range(num):
-                start = (i * ts) if (i + 1 < num) else (t - ts)
-                end = start + ts
-                if end > num:
-                    start = end - ts
-                self.keys.append([key, start])
-        print(f"[{__class__.__name__}] {time.time() - t0}")
+        if ts is None:
+            self.keys = [[_, None] for _ in self_keys]
+        else:
+            self.keys = []
+            print(f"[{__class__.__name__}] slicing samples in dataset...")
+            t0 = time.time()
+            for key in self_keys:
+                with env.begin(write=False) as txn:
+                    sample = pkl.loads(txn.get(key))
+                t = len(sample["video"])
+                if t < ts:
+                    continue
+                num = int(np.ceil(t / ts))  # split ts>20 into multiple
+                for i in range(num):
+                    start = (i * ts) if (i + 1 < num) else (t - ts)
+                    end = start + ts
+                    if end > num:
+                        start = end - ts
+                    self.keys.append([key, start])
+            print(f"[{__class__.__name__}] {time.time() - t0}")
+
         env.close()
 
         self.extra_keys = extra_keys
@@ -103,7 +107,12 @@ class YTVIS(ptud.Dataset):
             sample0 = pkl.loads(txn.get(key))
         sample1 = {}
 
-        video = sample0["video"][start : start + self.ts]
+        if self.ts is None:
+            end = None
+        else:
+            end = start + self.ts
+
+        video = sample0["video"][start:end]
         video = np.array(
             [
                 cv2.cvtColor(
@@ -117,13 +126,13 @@ class YTVIS(ptud.Dataset):
         sample1["video"] = video  # (t,c,h,w) uint8
 
         if "segment" in self.extra_keys:
-            segment = sample0["segment"][start : start + self.ts]
+            segment = sample0["segment"][start:end]
             segment = np.array([cv2.imdecode(_, cv2.IMREAD_GRAYSCALE) for _ in segment])
             segment = pt.from_numpy(segment)
             sample1["segment"] = segment  # (t,h,w) uint8
 
             if "clazz" in self.extra_keys:
-                clazz = pt.from_numpy(sample0["clazz"][start : start + self.ts])
+                clazz = pt.from_numpy(sample0["clazz"][start:end])
                 sample1["clazz"] = clazz  # (t,s) uint8
 
         sample2 = self.transform(**sample1)

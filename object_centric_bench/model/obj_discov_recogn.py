@@ -124,4 +124,3 @@ class ObjDiscovRecogn(nn.Module):
         boxgt2 = pt.concat(boxgt2)  # (??,)
 
         return slotz2, clsgt2, boxgt2, rcidx2
-
