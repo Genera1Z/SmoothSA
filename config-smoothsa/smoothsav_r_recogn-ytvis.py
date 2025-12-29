@@ -49,7 +49,7 @@ cbox = 4
 total_step = 5000
 val_interval = total_step // 40
 batch_size_t = 32 // 4  # 64 better
-batch_size_v = batch_size_t
+batch_size_v = 1
 num_work = 4
 lr = 1e-3
 
@@ -84,7 +84,7 @@ dataset_t = dict(
 dataset_v = dict(
     type=YTVIS,
     data_file="ytvis/val.lmdb",
-    ts=20,
+    ts=None,
     extra_keys=["segment", "bbox", "clazz"],
     transform=dict(type=Compose, transforms=transform_v),
     base_dir=...,
