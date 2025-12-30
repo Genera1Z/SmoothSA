@@ -159,9 +159,9 @@ class MOVi(ptud.Dataset):
         ```
         Then the file structure is like:
         - movi_c/256x256/1.0.0  # !!! make sure !!!
-            - movi_a-test.tfrecord-*****-of****
-            - movi_a-train.tfrecord-*****-of****
-            - movi_a-validation.tfrecord-*****-of****
+            - movi_c-test.tfrecord-*****-of****
+            - movi_c-train.tfrecord-*****-of****
+            - movi_c-validation.tfrecord-*****-of****
 
         Finally create a Python script with the following content at the project root, and execute it:
         ```python
