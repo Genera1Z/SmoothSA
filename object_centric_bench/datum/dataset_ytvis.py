@@ -81,8 +81,8 @@ class YTVIS(ptud.Dataset):
                 for i in range(num):
                     start = (i * ts) if (i + 1 < num) else (t - ts)
                     end = start + ts
-                    if end > num:
-                        start = end - ts
+                    if end > t:
+                        start = t - ts
                     self.keys.append([key, start])
             print(f"[{__class__.__name__}] {time.time() - t0}")
 
