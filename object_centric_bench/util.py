@@ -2,15 +2,10 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
+
 import importlib
-import os
 import pathlib as pl
-import pdb
-import re
 import sys
-
-
-MODULE_DICT = {}
 
 
 class Config(dict):
@@ -49,12 +44,6 @@ class Config(dict):
         super(Config, self).__setitem__(name, value)
 
     __setitem__ = __setattr__
-
-    # def __iter__(self):  # TODO XXX conflict with ``build_from_config`` in ``list``s  # TODO XXX ???
-    #     # values = list(self.values())
-    #     # if len(values) == 1:
-    #     #     return values[0]  # TODO check this
-    #     return iter(self.values())  # keeps order if using Python 3.7+
 
     @staticmethod
     def fromfile(cfg_file: pl.Path) -> "Config":
@@ -106,23 +95,6 @@ def build_from_config(cfg):
 
 class DictTool:
     """Support nested `dict`s and `list`s."""
-
-    # @staticmethod
-    # def popattr(obj, key):
-    #     assert isinstance(obj, (dict, list))
-
-    #     def resolve_attr(obj, key):
-    #         keys = key.split(".")
-    #         for name in keys:
-    #             if isinstance(obj, dict):
-    #                 obj = obj.pop(name)
-    #             elif isinstance(obj, list) and name.isdigit():
-    #                 obj = obj.pop(int(name))
-    #             else:
-    #                 raise KeyError(f"Invalid key or index: {name}")
-    #         return obj
-
-    #     return resolve_attr(obj, key)
 
     @staticmethod
     def getattr(obj, key):

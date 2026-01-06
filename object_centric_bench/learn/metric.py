@@ -2,6 +2,7 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
+
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -42,10 +43,6 @@ class MetricWrap(nn.Module):
                 metric = (metric[0] * value["weight"], metric[1])
             metrics[key] = metric
         return metrics
-
-    # def compile(self):  # ??? compile everything ???
-    #     for v in self.metrics.values():
-    #         v["metric"].compile()
 
 
 class Metric(ABC, nn.Module):

@@ -110,7 +110,7 @@ model = dict(
     student=spot_student,
 )
 model_imap = dict(input="batch.image")
-model_omap = ["feature", "slotz", "attent", "attent2", "recon", "attent2_t"]
+model_omap = ["feature", "slotz", "attenta", "recon", "attentd", "attentd2"]
 ckpt_map = [  # target<-source
     ["m.teacher.", "m."],
     ["m.student.encode_backbone.", "m.encode_backbone."],
@@ -140,13 +140,13 @@ loss_fn_t = loss_fn_v = dict(
     ),
     match=dict(
         metric=dict(type=AttentMatchLoss),
-        map=dict(input="output.attent", target="output.attent2_t"),
+        map=dict(input="output.attenta", target="output.attentd2"),
         weight=0.005,
     ),
 )
 _acc_dict_ = dict(
     # metric=...,
-    map=dict(input="output.segment2", target="batch.segment"),
+    map=dict(input="output.segment", target="batch.segment"),
     transform=dict(
         type=Lambda,
         ikeys=[["input", "target"]],
@@ -180,11 +180,11 @@ before_step = [
 after_forward = [
     dict(
         type=Lambda,
-        ikeys=[["output.attent2"]],  # (b,s,h,w) -> (b,h,w,s)
+        ikeys=[["output.attentd"]],  # (b,s,h,w) -> (b,h,w,s)
         func=lambda _: ptnf.one_hot(
             interpolat_argmax_attent(_.detach(), size=resolut0).long()
         ).bool(),
-        okeys=[["output.segment2"]],
+        okeys=[["output.segment"]],
     ),
 ]
 callback_t = [

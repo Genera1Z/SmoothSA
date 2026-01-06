@@ -2,6 +2,7 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
+
 from copy import deepcopy
 
 from einops import rearrange, repeat
@@ -74,15 +75,15 @@ class SPOT(nn.Module):
         encode = self.encode_project(encode)
 
         query = self.initializ(b if condit is None else condit)  # (b,n,c)
-        slotz, attent = self.aggregat(encode, query)
-        attent = rearrange(attent, "b n (h w) -> b n h w", h=h)
+        slotz, attenta = self.aggregat(encode, query)
+        attenta = rearrange(attenta, "b n (h w) -> b n h w", h=h)
 
         clue = rearrange(feature2, "b c h w -> b (h w) c")
-        recon, attent2 = self.decode(clue, slotz)  # (b,h*w,c)
+        recon, attentd = self.decode(clue, slotz)  # (b,h*w,c)
         recon = rearrange(recon, "b (h w) c -> b c h w", h=h)
-        attent2 = rearrange(attent2, "b n (h w) -> b n h w", h=h)
+        attentd = rearrange(attentd, "b n (h w) -> b n h w", h=h)
 
-        return feature2, slotz, attent, attent2, recon
+        return feature2, slotz, attenta, recon, attentd
         # segment acc: attent ~= attent2 ???
 
 
@@ -95,9 +96,9 @@ class SPOTDistill(nn.Module):
 
     def forward(self, input, condit=None):
         with pt.inference_mode(True):
-            _, _, _, attent2_t, _ = self.teacher(input, condit)
-        feature, slotz, attent, attent2, recon = self.student(input, condit)
-        return feature, slotz, attent, attent2, recon, attent2_t
+            _, _, _, _, attentd2 = self.teacher(input, condit)
+        feature, slotz, attenta, recon, attentd = self.student(input, condit)
+        return feature, slotz, attenta, recon, attentd, attentd2
 
     def train(self, mode=True):
         self = super().train(mode)

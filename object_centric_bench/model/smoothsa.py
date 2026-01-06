@@ -2,6 +2,7 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
+
 from types import MethodType
 
 from einops import rearrange, repeat
@@ -65,15 +66,15 @@ class SmoothSA(nn.Module):
         encode = self.encode_project(encode)
 
         qinit, query = self.initializ(encode, condit)  # (b,n,c)
-        slotz, attent = self.aggregat(encode, query)
-        attent = rearrange(attent, "b n (h w) -> b n h w", h=h)
+        slotz, attenta = self.aggregat(encode, query)
+        attenta = rearrange(attenta, "b n (h w) -> b n h w", h=h)
 
         clue = rearrange(feature, "b c h w -> b (h w) c")
-        recon, attent2 = self.decode(clue, slotz)  # (b,h*w,c)
+        recon, attentd = self.decode(clue, slotz)  # (b,h*w,c)
         recon = rearrange(recon, "b (h w) c -> b c h w", h=h)
-        attent2 = rearrange(attent2, "b n (h w) -> b n h w", h=h)
+        attentd = rearrange(attentd, "b n (h w) -> b n h w", h=h)
 
-        return feature, qinit, slotz, attent, attent2, recon
+        return feature, qinit, slotz, attenta, recon, attentd
 
 
 class SmoothSAVideo(SmoothSA):
@@ -120,7 +121,7 @@ class SmoothSAVideo(SmoothSA):
         encode = rearrange(encode, "(b t) hw c -> b t hw c", b=b)
 
         slotz = None
-        attent = []
+        attenta = []
 
         for i in range(t):
             if i == 0:
@@ -131,7 +132,7 @@ class SmoothSAVideo(SmoothSA):
                 query_i = self.transit(slotz, encode[:, : i + 1, :, :])
 
             niter = None if i == 0 else 1
-            slotz_i, attent_i = self.aggregat(
+            slotz_i, attenta_i = self.aggregat(
                 encode[:, i, :, :], query_i, num_iter=niter
             )
 
@@ -140,17 +141,17 @@ class SmoothSAVideo(SmoothSA):
                 if slotz is None
                 else pt.concat([slotz, slotz_i[:, None, :, :]], 1)
             )
-            attent.append(attent_i)  # t*(b,n,h*w)
+            attenta.append(attenta_i)  # t*(b,n,h*w)
 
-        attent = pt.stack(attent, 1)  # (b,t,n,h*w)
-        attent = rearrange(attent, "b t n (h w) -> b t n h w", h=h)
+        attenta = pt.stack(attenta, 1)  # (b,t,n,h*w)
+        attenta = rearrange(attenta, "b t n (h w) -> b t n h w", h=h)
 
         clue = rearrange(feature, "b t c h w -> (b t) (h w) c")
-        recon, attent2 = self.decode(clue, slotz.flatten(0, 1))  # (b*t,h*w,c)
+        recon, attentd = self.decode(clue, slotz.flatten(0, 1))  # (b*t,h*w,c)
         recon = rearrange(recon, "(b t) (h w) c -> b t c h w", b=b, h=h)
-        attent2 = rearrange(attent2, "(b t) n (h w) -> b t n h w", b=b, h=h)
+        attentd = rearrange(attentd, "(b t) n (h w) -> b t n h w", b=b, h=h)
 
-        return feature, qinit0, slotz, attent, attent2, recon
+        return feature, qinit0, slotz, attenta, recon, attentd
 
 
 class NormalSharedPreheated(nn.Module):  #  > normal separate
@@ -394,7 +395,9 @@ class NormalMlpPreheated(nn.Module):
         """
         mean = self.mlp(condit)
         randn = pt.randn_like(mean)  # better than not
-        smpl = mean + randn * self.logstd.exp()  # > share_randn0/1_on_pad (different on batch)
+        smpl = (
+            mean + randn * self.logstd.exp()
+        )  # > share_randn0/1_on_pad (different on batch)
 
         if self.detach_flag:
             encode = encode.detach()

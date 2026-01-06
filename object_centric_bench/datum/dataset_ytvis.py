@@ -2,6 +2,7 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
+
 from collections import defaultdict
 from pathlib import Path
 import json
@@ -11,7 +12,6 @@ import time
 from einops import rearrange
 from pycocotools import mask as maskUtils
 import cv2
-import lmdb
 import numpy as np
 import torch as pt
 import torch.nn.functional as ptnf
@@ -84,6 +84,7 @@ class YTVIS(ptud.Dataset):
                     if end > t:
                         start = t - ts
                     self.keys.append([key, start])
+            print(len(self.keys))
             print(f"[{__class__.__name__}] {time.time() - t0}")
 
         env.close()

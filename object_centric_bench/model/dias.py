@@ -2,6 +2,7 @@
 Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
+
 from einops import rearrange
 import torch as pt
 import torch.nn as nn
@@ -49,18 +50,15 @@ class ARRandTransformerDecoder(nn.Module):
             attent_hook_forward
         )
 
-        ### interaction asymmetry
-
+        """### interaction asymmetry
         self._interact = [None for _ in range(len(self.backbone.layers[:-1]))]
         for l, layer in enumerate(self.backbone.layers[:-1]):
-
             def interact_hook_forward(module, args, output):
                 self._interact[l] = output[1]
-
             layer.multihead_attn.register_forward_pre_hook(
                 attent_hook_forward_pre, with_kwargs=True
             )
-            layer.multihead_attn.register_forward_hook(interact_hook_forward)
+            layer.multihead_attn.register_forward_hook(interact_hook_forward)"""
 
     def forward(self, input, slots, smask=None, p=0.5):
         """
@@ -114,10 +112,13 @@ class ARRandTransformerDecoder(nn.Module):
 
         memory = self.project2(slots)
         autoreg = self.backbone(
-            self.norm0(query), memory=memory, memory_key_padding_mask=smask
+            self.norm0(query),
+            memory=memory,
+            memory_key_padding_mask=None if smask is None else ~smask,
         )
         recon = self.readout(autoreg)  # (b,m,c)
         _, _, d = recon.shape
+        # print(recon.isnan().any())
 
         if self.training:
             idxs_inverse = idxs.argsort(1)[:, :, None]

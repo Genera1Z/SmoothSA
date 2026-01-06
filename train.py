@@ -1,3 +1,8 @@
+"""
+Copyright (c) 2024 Genera1Z
+https://github.com/Genera1Z
+"""
+
 from argparse import ArgumentParser
 from pathlib import Path
 import os
@@ -16,6 +21,7 @@ from object_centric_bench.util import Config, build_from_config
 
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"  # reproducibility
+pt._dynamo.config.suppress_errors = True  # one_hot, interplolate
 
 
 def train_epoch(pack):
@@ -96,12 +102,13 @@ def set_seed(seed):
 
 
 def main(args):
-    pack = Config({})
-    print(args)
-
+    seed = args.seed
     cfg_file = Path(args.cfg_file)
     data_path = Path(args.data_dir)
+    save_dir = Path(args.save_dir)
     ckpt_file = args.ckpt_file
+    print(args)
+
     if ckpt_file is None:
         pass
     elif isinstance(ckpt_file, str):
@@ -113,29 +120,29 @@ def main(args):
     assert cfg_file.name.endswith(".py")
     assert cfg_file.is_file()
     cfg_name = cfg_file.name.split(".")[0]
-    cfg = Config.fromfile(args.cfg_file)
+    cfg = Config.fromfile(cfg_file)
 
-    save_path = Path(args.save_dir) / cfg_name / str(args.seed)
+    save_path = Path(save_dir) / cfg_name / str(seed)
     save_path.mkdir(parents=True, exist_ok=True)
-    shutil.copy(args.cfg_file, save_path.parent)
+    shutil.copy(cfg_file, save_path.parent)
 
-    set_seed(args.seed)  # for reproducibility
+    set_seed(seed)  # for reproducibility
     pt.backends.cudnn.benchmark = False  # XXX True: faster but stochastic
     pt.backends.cudnn.deterministic = True  # for cuda devices
     pt.use_deterministic_algorithms(True, warn_only=True)  # for all devices
 
     ## datum init
 
-    work_init_fn = lambda _: set_seed(args.seed)  # for reproducibility
+    work_init_fn = lambda _: set_seed(seed)  # for reproducibility
     rng = pt.Generator()
-    rng.manual_seed(args.seed)
+    rng.manual_seed(seed)
 
     cfg.dataset_t.base_dir = cfg.dataset_v.base_dir = data_path
 
     dataset_t = build_from_config(cfg.dataset_t)
     dataload_t = DataLoader(
         dataset_t,
-        cfg.batch_size_t,  # TODO XXX TODO XXX TODO XXX TODO XXX // 2
+        cfg.batch_size_t,
         shuffle=True,
         num_workers=cfg.num_work,
         collate_fn=build_from_config(cfg.collate_fn_t),
@@ -202,6 +209,7 @@ def main(args):
 
     ## train loop
 
+    pack = Config({})
     pack.dataset_t = dataload_t
     pack.dataset_v = dataload_v
     pack.model = model
@@ -243,16 +251,12 @@ def parse_args():
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,  # TODO XXX
+        default=42,  # TODO XXX 42 43 44
     )
     parser.add_argument(
         "--cfg_file",
-        type=str,
-        default="config-randsfq-tsim/randsfq_r_recogn-ytvis.py",
-        # default="config-smoothsa/smoothsa_r_recogn-coco.py",  # TODO XXX
-        # default="config-spot/spot_r_recogn-coco.py",
-        # default="config-smoothsa/smoothsav_r_recogn-ytvis.py",
-        # default="config-slotcontrast/slotcontrast_r_recogn-ytvis.py",
+        type=str,  # TODO XXX
+        default="config-smoothsa/smoothsa_r-coco.py",
     )
     parser.add_argument(  # TODO XXX
         "--data_dir", type=str, default="/media/GeneralZ/Storage/Static/datasets"
@@ -262,11 +266,6 @@ def parse_args():
         "--ckpt_file",
         type=str,
         nargs="+",
-        # default="archive-randsfq-tsim/randsfq_r-ytvis/42-0155.pth",
-        # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-smoothsa/save/smoothsa_r-coco/42-0021.pth",
-        # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-spot/save/spot_r-coco/42-0020.pth",
-        # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-smoothsav-vvv/save/smoothsav_r-ytvis/42-0159.pth",
-        # default="../_20250620-dias0_randsfq_smoothsa-ckpt/20250620-dias0_randsfq_smoothsa-slotcontrast_ce/save/slotcontrast_r-ytvis/42-0155.pth",
         # default="archive-hwm/spott_r_randar-ytvis/best.pth",
         # default=[
         #     "archive-hwm/vqvae-ytvis-c256/best.pth",
@@ -278,5 +277,4 @@ def parse_args():
 
 if __name__ == "__main__":
     # with pt.autograd.detect_anomaly(True):  # detect NaN
-    pt._dynamo.config.suppress_errors = True  # one_hot, interplolate
     main(parse_args())

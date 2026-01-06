@@ -15,7 +15,7 @@ Slot Attention (SA) and its variants lie at the heart of mainstream Object-Centr
 
 
 
-<!-- ## 🎉 Accepted to ACM MM 2025 as a Poster -->
+<!-- ## 🎉 Accepted to ICLR 2026 as a Poster -->
 
 Official source code, model checkpoints and training logs for paper "**Smoothing Slot Attention Iterations and Recurrences**".
 
@@ -26,66 +26,25 @@ Official source code, model checkpoints and training logs for paper "**Smoothing
 
 ## 🏆 Performance
 
-### (1) ⭐⭐⭐ Re-evaluated Performance Values @ Version 3 ⭐⭐⭐
-
-**Object discovery**:
-
-|                     | ari      | arifg    | mbo      | miou     |
-|---------------------|----------|----------|----------|----------|
-| smoothsa_r-clevrtex | 76.9±1.4 | 80.7±1.7 | 60.0±1.8 | 58.1±2.3 |
-| smoothsa_r-coco     | 29.6±1.0 | 41.9±0.7 | 33.6±0.5 | 32.1±0.5 |
-| smoothsa_r-voc      | 34.1±0.3 | 34.5±0.2 | 45.2±0.3 | 43.9±0.3 |
-| smoothsav_c-movi_c  | 45.3±0.6 | 69.7±1.2 | 29.0±0.2 | 27.2±0.3 |
-| smoothsav_c-movi_d  | 34.8±0.1 | 70.0±0.2 | 28.7±0.1 | 27.2±0.1 |
-| smoothsav_r-ytvis   | 43.4±1.7 | 61.7±2.4 | 40.5±1.3 | 39.9±1.4 |
-| spot_r-clevrtex     | 25.6±1.3 | 77.1±0.5 | 48.2±0.6 | 46.3±0.7 |
-| spot_r-coco         | 23.6±0.6 | 40.1±0.6 | 30.8±0.3 | 29.2±0.3 |
-| spot_r-voc          | 24.5±0.4 | 31.9±0.9 | 40.1±0.2 | 38.6±0.3 |
-
-Performance values of other baselines:
-- For image OCL baselines, **SLATE**, **DINOSAUR**, **SlotDiffusion** and **DIAS**, please check repo [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL?tab=readme-ov-file#-performance) and [DIAS](https://github.com/Genera1Z/DIAS?tab=readme-ov-file#-performance);
-- For video OCL baselines, **VideoSAUR**, **SlotContrast** and **RandSF.Q**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-performance).
-
-
-**Object recognition**:
-
-|                          | class top1 | class top3 |  box iou  | #match |
-|--------------------------|:----------:|:----------:|:---------:|:-----------:|
-| smoothsa_r_recogn-coco   |  81.28±0.1 |  92.94±0.2 | 39.87±0.3 |   6658±28   |
-| smoothsav_r_recogn-ytvis |  32.53±1.5 |  69.76±2.5 | 43.26±0.7 |   8820±46   |
-| spot_r_recogn-coco       |  80.70±0.3 |  92.63±0.1 | 38.43±0.1 |   6528±36   |
-
-For performance values of baseline **RandSF.Q**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-performance).
-
-
-### (2) Old Performance Values
-
 **Object discovery accuracy**:
-<img src="res/acc_obj_discov.png" style="width:100%">
+
+<img src="res/acc_obj_discov-img.png" style="width:98%">
+
+<img src="res/acc_obj_discov-vid.png" style="width:98%">
 
 **Object discovery visualization**:
+
 <img src="res/qualitative.png" style="width:100%;">
+
+**Object recognition accuracy**:
+
+<img src="res/acc_obj_recogn.png" style="width:50%">
 
 
 
 ## 🌟 Highlights
 
-⭐⭐⭐ ***Inherited from GitHub repo [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL).*** ⭐⭐⭐
-
-- ✅ **fp16 fast training** [Automatic mixed precision](https://docs.pytorch.org/tutorials/recipes/recipes/amp_recipe.html) training (fp32+fp16) is enabled. Most of the training can be finished less than 4 or 8 hours (for image or video OCL respectively) using one V100 GPU.
-- ✅ **less I/O overhead** Datasets are stored in [LMBD](https://lmdb.readthedocs.io) database format to save I/O overhead, beneficial especially on computing cluster.
-
-- ✅ **config-driven experiment** This is totally config-driven framework, largely inspired by [OpenMMLab](https://github.com/open-mmlab), but with much less capsulation.
-
-- ✅ **strong baselines** <!-- All models requiring VAE are implemented with StableDiffusion pretrained VAE [TinyVAE](https://huggingface.co/docs/diffusers/v0.30.1/en/api/models/autoencoder_tiny); --> All models are trained with [strong](https://arxiv.org/abs/2206.07764) data augmentations; All models employ vision foundation model [DINO2](https://huggingface.co/docs/transformers/en/model_doc/dinov2) as their backbone.
-
-
-
-## 🚑️ Changelogs
-
-- [2025/11/07] Fix ``lmdb`` multiprocessing issues due to ``torch>=3.7``.
-- ⭐⭐⭐ [2025/10/21] ⭐⭐⭐ **Object discovery accuracy values are updated for version 3. Check this table file [acc-v3.xlsx](acc-v3.xlsx) for details**.
-- [2025/10/20] Version 3 (based on [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL)): re-implement segmentation evaluation; corresponding new dataset lmdb files are uploaded. Thus, object discovery acc could change a little, especially ARI values.
+⭐⭐⭐ ***Please check GitHub repo [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL).*** ⭐⭐⭐
 
 
 
@@ -103,7 +62,6 @@ For performance values of baseline **RandSF.Q**, please check repo [RandSF.Q](ht
     - randsfq.py        # *** for our SmoothSA model building ***
     - ...
   - learn/              # metrics, optimizers and callbacks
-- convert.py
 - train.py
 - eval.py
 - requirements.txt
@@ -147,73 +105,52 @@ Datasets ClevrTex, COCO, VOC, MOVi-C, MOVi-D and YTVIS, which are converted into
 
 ## 🔥 How to Use
 
+Take SmoothSA on COCO as an example.
 
-### (1) Install
+**(1) Environment**
 
-(Using Python version 3.11)
+To set up the environment, run:
 ```shell
+# python 3.11
 pip install -r requirements.txt
 ```
-Use package versions no older than the specification.
 
+**(2) Dataset**
 
-### (2) Prepare
+To prepare the dataset, download ***Converted Datasets*** and unzip to `path/to/your/dataset/`. Or convert them by yourself according to ```XxxDataset.convert_dataset()``` docs.
 
-Download **converted datasets** or convert them by yourself according to ```XxxDataset.convert_dataset()``` docs.
+**(3) Train**
 
-
-### (3) Train
-
-Run training:
-```shell
-python train.py
-```
-But **firstly** change the arguments marked with ```TODO XXX``` to your needs.
-
-For example,
+To train the model, run:
 ```shell
 python train.py \
     --seed 42 \
     --cfg_file config-smoothsa/smoothsa_r-coco.py \
-    --data_dir path/to/coco
+    --data_dir path/to/your/dataset \
+    --save_dir save
 ```
 
+**(4) Evaluate**
 
-### (4) Evaluate
-
-Run evaluation:
+To evaluate the model, run:
 ```shell
-python eval.py
+python eval.py \
+    --cfg_file config-smoothsa/smoothsa_r-coco.py \
+    --data_dir path/to/your/dataset \
+    --ckpt_file archive-smoothsa/smoothsa_r-coco/best.pth \
+    --is_viz True \
+    --is_img True
+# object discovery accuracy values will be printed in the terminal
+# object discovery visualization will be saved to ./smoothsa_r-coco/
 ```
-But **firstly** modify places marked with ``TODO XXX`` according to your needs.
-
-
-
-## 💡 Tips
-
-1. Any config file can be converted into typical Python code by changing from
-```Python
-model = dict(type=ClassName, key1=value1,..)
-```
-to
-```Python
-model = ClassName(key1=value1,..)
-```
-
-2. All config files follow a similar structure, and you can use file comparator [Meld](https://meldmerge.org) with [VSCode](https://code.visualstudio.com/) plugin [Meld Diff](https://marketplace.visualstudio.com/items?itemName=danielroedl.meld-diff) to check their differences.
-
-<img src="https://github.com/Genera1Z/VQ-VFM-OCL/raw/main/res/meld_diff.png" style="width:100%;">
 
 
 
 ## 🤗 Contact & Support
 
-I am now working on Object-Centric Learning (OCL). If you have any cool ideas or issues, do not hasitate to contact me!
-- Website: [genera1z.github.io](https://genera1z.github.io)
-- WeChat: Genera1Z
-- GoogleScholar: [MqlwrKAAAAAJ](https://scholar.google.com/citations?hl=en&user=MqlwrKAAAAAJ&view_op=list_works&sortby=pubdate)
-- LinkedIn: [rongzhen-zhao-3b7215247](https://www.linkedin.com/in/rongzhen-zhao-3b7215247)
-- eMail: rongzhen.zhao@aalto.fi, zhaorongzhenagi@gmail.com
+If you have any issues on this repo or cool ideas on OCL, please do not hesitate to contact me!
+- page: https://genera1z.github.io
+- email: rongzhen.zhao@aalto.fi, zhaorongzhenagi@gmail.com
 
 If you are applying OCL (not limited to this repo) to tasks like **visual question answering**, **visual prediction/reasoning**, **world modeling** and **reinforcement learning**, let us collaborate!
 
