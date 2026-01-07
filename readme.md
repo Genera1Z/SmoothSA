@@ -26,7 +26,7 @@ Official source code, model checkpoints and training logs for paper "**Smoothing
 
 ## 🏆 Performance
 
-**Object discovery accuracy**: (Input resolution is 256×256 (224×224); DINO2 ViT-S/14 is for encoding)
+**Object discovery accuracy**: (Input resolution is **256×256** (224×224); **DINO2 ViT-S/14** is used for encoding)
 
 <img src="res/acc_obj_discov-img.png" style="width:98%">
 
