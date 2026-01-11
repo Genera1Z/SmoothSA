@@ -27,6 +27,7 @@ Official source code, model checkpoints and training logs for paper "**Smoothing
 ## 🏆 Performance
 
 **Object discovery accuracy**: (Input resolution is **256×256** (224×224); **DINO2 ViT-S/14** is used for encoding)
+Numbers are detailed in [acc-v3.xlsx](acc-v3.xlsx).
 
 <img src="res/acc_obj_discov-img.png" style="width:98%">
 
@@ -37,6 +38,7 @@ Official source code, model checkpoints and training logs for paper "**Smoothing
 <img src="res/qualitative.png" style="width:100%;">
 
 **Object recognition accuracy**:
+Numbers are detailed in [acc-recogn-v3.xlsx](acc-recogn-v3.xlsx).
 
 <img src="res/acc_obj_recogn.png" style="width:50%">
 
