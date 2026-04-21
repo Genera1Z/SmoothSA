@@ -17,7 +17,7 @@ class SlotContrastLoss(Metric):
         super().__init__(mean)
         self.tau = tau
 
-    def forward(self, input, shift=1):
+    def compute(self, input, shift=1):
         """
         - input: slots, shape=(b,t,s,c)
         """
@@ -35,4 +35,4 @@ class SlotContrastLoss(Metric):
         eye = repeat(eye, "m n -> t m n", t=t - shift)
         # loss = ptnf.cross_entropy(ss, eye, reduction="none")  # (b,..)
         loss = ptnf.cross_entropy(ss, eye)[None]  # (b=1,)
-        return self.finaliz(loss)  # (b,..) (b,)
+        return loss, None  # (b,..) (b,)

@@ -63,15 +63,28 @@ class Metric(ABC, nn.Module):
             assert 0 not in mean  # batch/first dimension should not be included
         self.mean = mean
 
-    @abstractmethod
     def forward(self, *args, **kwds) -> tuple:
-        ...
-        metric, valid = self.finaliz(...)
-        return metric, valid  # loss/acc (b,..), valid (b,)
+        if len(args) > 0:
+            first_input_tensor = args[0]
+        elif len(kwds) > 0:
+            first_input_tensor = list(kwds.values())[0]
+        else:
+            raise ValueError
+        assert isinstance(first_input_tensor, pt.Tensor)
 
-    def finaliz(self, metric, valid=None) -> tuple:
+        num = first_input_tensor.size(0)
+        dtype = first_input_tensor.dtype
+        device = first_input_tensor.device
+
+        if num > 0:
+            metric, valid = self.compute(*args, **kwds)
+            if valid is None:
+                valid = pt.ones(metric.size(0), dtype=pt.bool, device=device)
+        else:
+            metric = pt.tensor([], dtype=dtype, device=device)
+            valid = pt.tensor([], dtype=pt.bool, device=device)
+
         """mean ``metric`` along dimensions ``self.mean``; flag ``valid`` samples
-
         - metric: shape=(b,..); dtype=float
         - valid: shape=(b,); dtype=bool
         """
@@ -84,11 +97,11 @@ class Metric(ABC, nn.Module):
                 metric2 = metric
         else:
             metric2 = metric.mean(self.mean)  # (b,..)
-        if valid is not None:
-            valid2 = valid
-        else:
-            valid2 = pt.ones(metric.size(0), dtype=pt.bool, device=metric.device)
-        return metric2, valid2
+
+        return metric2, valid  # loss/acc (b,..), valid (b,)
+
+    def compute(self, *args, **kwds) -> tuple:
+        raise NotImplemented  # metric, valid
 
 
 ####
@@ -97,7 +110,7 @@ class Metric(ABC, nn.Module):
 class CrossEntropyLoss(Metric):
     """``nn.CrossEntropyLoss``."""
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         """
         - input: shape=(b,c,..), dtype=float
         - target: shape=(b,..), dtype=int64;
@@ -105,30 +118,30 @@ class CrossEntropyLoss(Metric):
         """
         # loss = ptnf.cross_entropy(input, target, reduction="none")  # (b,..)
         loss = ptnf.cross_entropy(input, target)[None]  # (b=1,)
-        return self.finaliz(loss)  # (b,) (b,)
+        return loss, None  # (b,) (b,)
 
 
 class L1Loss(Metric):
     """``nn.L1Loss``."""
 
-    def forward(self, input, target=None):
+    def compute(self, input, target=None):
         if target is None:
             target = pt.zeros_like(input)
         assert input.ndim == target.ndim >= 1
         # loss = ptnf.l1_loss(input, target, reduction="none")  # (b,..)
         loss = ptnf.l1_loss(input, target)[None]  # (b=1,)
-        return self.finaliz(loss)  # (b,) (b,)
+        return loss, None  # (b,) (b,)
 
 
 class MSELoss(Metric):
     """``nn.MSELoss``."""
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         assert input.ndim == target.ndim >= 1
         # TODO XXX why outside-mean is no better than builtin-mean ??? TODO XXX
         # loss = ptnf.mse_loss(input, target, reduction="none")  # (b,..)
         loss = ptnf.mse_loss(input, target)[None]  # (b=1,)
-        return self.finaliz(loss)  # (b,) (b,)
+        return loss, None  # (b,) (b,)
 
 
 ####
@@ -142,7 +155,7 @@ class ClassAccuracy(Metric):
         self.topk = topk
         self.dim = dim  # the dim index of classes
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         """
         input: shape=(b,..,c), dtype=int64
         target: shape=(b,..), dtype=int64
@@ -154,7 +167,7 @@ class ClassAccuracy(Metric):
         else:
             predict = input.topk(self.topk, self.dim)[1]
             correct = (predict == target.unsqueeze(self.dim)).any(self.dim).float()
-        return self.finaliz(correct)  # (b,) (b,)
+        return correct, None
 
 
 class TensorSize(Metric):
@@ -164,10 +177,10 @@ class TensorSize(Metric):
         super().__init__(mean)
         self.dim = dim
 
-    def forward(self, input):
+    def compute(self, input):
         size = input.shape[self.dim]
         size = pt.ones(1, device=input.device) * size
-        return self.finaliz(size)
+        return size, None
 
 
 class BoxIoU(Metric):
@@ -175,14 +188,14 @@ class BoxIoU(Metric):
     No Hungarian matching, so not using ``mIoU`` as name.
     """
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         """
         - input: shape=(b,c=4), dtype=float
         - target: shape=(b,c=4), dtype=float
         """
         assert input.shape == target.shape and input.ndim == 2 and input.size(1) == 4
         iou, valid = __class__.bbox_iou(input, target)  # (b,) (b,)
-        return self.finaliz(iou, valid)  # (b,) (b,)
+        return iou, valid
 
     @staticmethod
     def bbox_iou(box1: np.ndarray, box2: np.ndarray) -> float:
@@ -216,7 +229,7 @@ class ARI(Metric):
         super().__init__(mean)
         self.skip = pt.from_numpy(np.array(skip, "int64"))
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         """
         - input: shape=(b,n,c), onehot segment
         - target: shape=(b,n,d), onehot segment
@@ -227,7 +240,7 @@ class ARI(Metric):
             target = __class__.skip_segment(target, self.skip)
         ari = __class__.adjusted_rand_index(input, target)  # (b,)
         valid = ARI.find_valid(target)  # (b,)
-        return self.finaliz(ari, valid)  # (b,) (b,)
+        return ari, valid
 
     @pt.inference_mode()
     @staticmethod
@@ -293,7 +306,7 @@ class mBO(Metric):
         super().__init__(mean)
         self.skip = pt.from_numpy(np.array(skip, "int64"))
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         """
         - input: shape=(b,n,c), onehot segment
         - target: shape=(b,n,d), onehot segment
@@ -304,7 +317,7 @@ class mBO(Metric):
             target = ARI.skip_segment(target, self.skip)
         mbo = __class__.mean_best_overlap(input, target)  # (b,)
         valid = ARI.find_valid(target)  # (b,)
-        return self.finaliz(mbo, valid)  # (b,) (b,)
+        return mbo, valid
 
     @pt.inference_mode()
     @staticmethod
@@ -329,7 +342,7 @@ class mIoU(Metric):
         super().__init__(mean)
         self.skip = pt.from_numpy(np.array(skip, "int64"))
 
-    def forward(self, input, target):
+    def compute(self, input, target):
         """
         input: shape=(b,n,c), onehot segment
         target: shape=(b,n,d), onehot segment
@@ -340,7 +353,7 @@ class mIoU(Metric):
             target = ARI.skip_segment(target, self.skip)
         miou = __class__.mean_intersection_over_union(input, target)  # (b,)
         valid = ARI.find_valid(target)  # (b,)
-        return self.finaliz(miou, valid)  # (b,) (b,)
+        return miou, valid
 
     @pt.inference_mode()
     @staticmethod

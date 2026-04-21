@@ -5,6 +5,7 @@ https://github.com/Genera1Z
 
 from argparse import ArgumentParser
 from pathlib import Path
+import pickle as pkl
 
 import cv2
 import numpy as np
@@ -20,7 +21,15 @@ from object_centric_bench.util import Config, build_from_config
 
 @pt.inference_mode()
 def val_epoch(
-    cfg, dataset_v, model, loss_fn_v, acc_fn_v, callback_v, is_viz=False, is_img=False
+    cfg,
+    dataset_v,
+    model,
+    loss_fn_v,
+    acc_fn_v,
+    callback_v,
+    is_viz=False,
+    is_img=False,
+    dump_log=False,
 ):
     pack = Config({})
     pack.dataset_v = dataset_v
@@ -36,12 +45,12 @@ def val_epoch(
     std = pt.from_numpy(np.array(cfg.IMAGENET_STD, "float32"))
     cnt = 0
 
-    pack.isval = True
     pack.model.eval()
+    pack.isval = True
     [_.before_epoch(**pack) for _ in pack.callback_v]
 
     for i, batch in enumerate(tqdm.tqdm(pack.dataset_v)):
-        pack.batch = {k: v.cuda() for k, v in batch.items()}
+        pack.batch = batch
 
         [_.before_step(**pack) for _ in pack.callback_v]
 
@@ -90,33 +99,34 @@ def val_epoch(
     [_.after_epoch(**pack) for _ in pack.callback_v]
 
     for cb in pack.callback_v:
+        flag_log = False
         if cb.__class__.__name__ == "AverageLog":
+            flag_log = True
             pack2.log_info = cb.mean()
-            break
         elif cb.__class__.__name__ == "HandleLog":
+            flag_log = True
             pack2.log_info = cb.handle()
+        if flag_log:
+            if dump_log:
+                with open(f"{cfg.name}.pkl", "wb") as f:
+                    pkl.dump(cb.state_dict, f)
             break
 
     return pack2
 
 
 def main(args):
-    cfg_file = Path(args.cfg_file)
-    data_path = Path(args.data_dir)
-    ckpt_file = Path(args.ckpt_file)
-    is_viz = args.is_viz
-    is_img = args.is_img
     pt.backends.cudnn.benchmark = True
 
-    assert cfg_file.name.endswith(".py")
-    assert cfg_file.is_file()
-    cfg_name = cfg_file.name.split(".")[0]
-    cfg = Config.fromfile(cfg_file)
+    assert args.cfg_file.name.endswith(".py")
+    assert args.cfg_file.is_file()
+    cfg_name = args.cfg_file.name.split(".")[0]
+    cfg = Config.fromfile(args.cfg_file)
     cfg.name = cfg_name
 
     ## datum init
 
-    cfg.dataset_t.base_dir = cfg.dataset_v.base_dir = data_path
+    cfg.dataset_t.base_dir = cfg.dataset_v.base_dir = args.data_dir
 
     dataset_v = build_from_config(cfg.dataset_v)
     dataload_v = DataLoader(
@@ -134,8 +144,8 @@ def main(args):
     # print(model)
     model = ModelWrap(model, cfg.model_imap, cfg.model_omap)
 
-    if ckpt_file:
-        model.load(ckpt_file, None, verbose=False)
+    if args.ckpt_file:
+        model.load(args.ckpt_file, None, verbose=False)
     if cfg.freez:
         model.freez(cfg.freez, verbose=False)
 
@@ -156,7 +166,15 @@ def main(args):
     ## do eval
 
     pack2 = val_epoch(
-        cfg, dataload_v, model, loss_fn_v, acc_fn_v, callback_v, is_viz, is_img
+        cfg,
+        dataload_v,
+        model,
+        loss_fn_v,
+        acc_fn_v,
+        callback_v,
+        args.is_viz,
+        args.is_img,
+        args.dump_log,
     )
 
     return pack2.log_info
@@ -168,13 +186,15 @@ def main_eval_multi(args):
         # "config-smoothsa/smoothsa_r-coco.py",
         # "config-smoothsa/smoothsa_r-voc.py",
         # "config-smoothsa/smoothsav_c-movi_c.py",
-        # "config-smoothsa/smoothsav_c-movi_d.py",
+        # "config-smoothsa/smoothsav_c-movi_e.py",
         # "config-smoothsa/smoothsav_r-ytvis.py",
+        # "config-smoothsa/smoothsav_r-ytvis_hq.py",
         # "config-spot/spot_r-clevrtex.py",
         # "config-spot/spot_r-coco.py",
         # "config-spot/spot_r-voc.py",
         "config-smoothsa/smoothsa_r_recogn-coco.py",
         "config-smoothsa/smoothsav_r_recogn-ytvis.py",
+        "config-smoothsa/smoothsav_r_recogn-ytvis_hq.py",
         "config-spot/spot_r_recogn-coco.py",
     ]
     ckpt_files = [
@@ -199,14 +219,19 @@ def main_eval_multi(args):
         #     "archive-smoothsa/smoothsav_c-movi_c/44-0037.pth",
         # ],
         # [
-        #     "archive-smoothsa/smoothsav_c-movi_d/42-0038.pth",
-        #     "archive-smoothsa/smoothsav_c-movi_d/43-0028.pth",
-        #     "archive-smoothsa/smoothsav_c-movi_d/44-0037.pth",
+        #     "archive-smoothsa/smoothsav_c-movi_e/42-0036.pth",
+        #     "archive-smoothsa/smoothsav_c-movi_e/43-0038.pth",
+        #     "archive-smoothsa/smoothsav_c-movi_e/44-0035.pth",
         # ],
         # [
-        #     "archive-smoothsa/smoothsav_r-ytvis/42-0124.pth",
-        #     "archive-smoothsa/smoothsav_r-ytvis/43-0124.pth",
-        #     "archive-smoothsa/smoothsav_r-ytvis/44-0150.pth",
+        #     "archive-smoothsa/smoothsav_r-ytvis/42-0117.pth",
+        #     "archive-smoothsa/smoothsav_r-ytvis/43-0081.pth",
+        #     "archive-smoothsa/smoothsav_r-ytvis/44-0117.pth",
+        # ],
+        # [
+        #     "archive-smoothsa/smoothsav_r-ytvis_hq/42-0124.pth",
+        #     "archive-smoothsa/smoothsav_r-ytvis_hq/43-0124.pth",
+        #     "archive-smoothsa/smoothsav_r-ytvis_hq/44-0150.pth",
         # ],
         # [
         #     "archive-spot/spot_r-clevrtex/42-0027.pth",
@@ -229,9 +254,14 @@ def main_eval_multi(args):
             "archive-recogn/smoothsa_r_recogn-coco/44-0002.pth",
         ],
         [
-            "archive-recogn/smoothsav_r_recogn-ytvis/42-0011.pth",
-            "archive-recogn/smoothsav_r_recogn-ytvis/43-0010.pth",
-            "archive-recogn/smoothsav_r_recogn-ytvis/44-0014.pth",
+            "archive-recogn/smoothsav_r_recogn-ytvis/42-0012.pth",
+            "archive-recogn/smoothsav_r_recogn-ytvis/43-0012.pth",
+            "archive-recogn/smoothsav_r_recogn-ytvis/44-0013.pth",
+        ],
+        [
+            "archive-recogn/smoothsav_r_recogn-ytvis_hq/42-0022.pth",
+            "archive-recogn/smoothsav_r_recogn-ytvis_hq/43-0018.pth",
+            "archive-recogn/smoothsav_r_recogn-ytvis_hq/44-0023.pth",
         ],
         [
             "archive-recogn/spot_r_recogn-coco/42-0002.pth",
@@ -270,15 +300,15 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument(
         "--cfg_file",
-        type=str,  # TODO XXX
+        type=Path,  # TODO XXX
         default="config-smoothsa/smoothsa_r-coco.py",
     )
     parser.add_argument(  # TODO XXX
-        "--data_dir", type=str, default="/media/GeneralZ/Storage/Static/datasets"
+        "--data_dir", type=Path, default="/media/GeneralZ/Storage/Static/datasets"
     )
     parser.add_argument(
         "--ckpt_file",
-        type=str,  # TODO XXX
+        type=Path,  # TODO XXX
         default="archive-smoothsa/smoothsa_r-coco/42-0027.pth",
     )
     parser.add_argument(
@@ -288,6 +318,11 @@ def parse_args():
     )
     parser.add_argument(
         "--is_img",  # image or video
+        type=bool,  # TODO XXX
+        default=False,
+    )
+    parser.add_argument(
+        "--dump_log",
         type=bool,  # TODO XXX
         default=False,
     )

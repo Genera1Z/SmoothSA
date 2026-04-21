@@ -133,7 +133,7 @@ model = dict(
     decode=dict(
         type=AR9TransformerDecoder,
         resolut=resolut1,
-        vfm_dim=vfm_dim,
+        emb_dim=vfm_dim,
         posit_embed=dict(type=Identity),
         project1=dict(  # fc>fc+ln
             type=Sequential,

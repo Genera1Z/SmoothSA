@@ -18,8 +18,8 @@ from .transform import (
     CenterCrop,
     Resize,
     Slice1,
-    RandomSliceTo1,
-    StridedRandomSlice1,
+    RandomSliceToSequence,
+    StridedRandomSliceSequence,
 )
 from .transform_bbox import Ltrb2Xywh, Xywh2Ltrb
 from .collate import ClPadToMax1, ClPadTo1, DefaultCollate

@@ -171,7 +171,7 @@ class RandomSliceTo1:
         size = video.size(self.dim)
         if self.size >= size and self.step == 1:
             return sample
-        start, end = __class__.calc_slicing(self.size, size)
+        start, end = __class__.calc_random_slicing(self.size, size)
         for key in self.keys:
             input = DictTool.getattr(sample, key)
             size2 = input.size(self.dim)
@@ -181,7 +181,7 @@ class RandomSliceTo1:
         return sample
 
     @staticmethod
-    def calc_slicing(target, size):
+    def calc_random_slicing(target, size):
         start = random.randint(0, size - target)
         end = start + target
         return start, end
@@ -196,7 +196,7 @@ class StridedRandomSlice1(RandomSliceTo1):
         size = video.size(self.dim)
         if self.size >= size and self.step == 1:
             return sample
-        start, end = __class__.calc_slicing(self.size, size)
+        start, end = __class__.calc_strided_slicing(self.size, size)
         # print(start, end)
         for key in self.keys:
             input = DictTool.getattr(sample, key)
@@ -207,9 +207,75 @@ class StridedRandomSlice1(RandomSliceTo1):
         return sample
 
     @staticmethod
-    def calc_slicing(target, size):
+    def calc_strided_slicing(target, size):
+        assert size > target and size % target == 0
         start = random.randint(0, math.ceil(size / target) - 1) * target
-        assert size % target == 0  # XXX remove this restrict
+        end = start + target
+        return start, end
+
+
+class RandomSliceToSequence:
+    """slice a sequence (ndarray, list, tuple...), along the first dimension"""
+
+    def __init__(self, keys, size):
+        """
+        - size: if size>= tensor.size(dim) and step == 1 then skip it
+        """
+        self.keys = keys
+        self.size = size
+
+    def __call__(self, **sample: dict) -> dict:
+        # pack = pack.copy()
+        video = DictTool.getattr(sample, self.keys[0])
+        size = len(video)
+        if self.size >= size:
+            return sample
+        start, end = RandomSliceTo1.calc_random_slicing(self.size, size)
+        for key in self.keys:
+            input = DictTool.getattr(sample, key)
+            size2 = len(input)
+            assert size2 == size  # all sequences are equal-length
+            output = input[start:end]
+            DictTool.setattr(sample, key, output)
+        return sample
+
+
+class StridedRandomSliceSequence:
+    """slice a sequence (ndarray, list, tuple...), along the first dimension"""
+
+    def __init__(self, keys, size, exact=False):
+        """
+        - size: if size>= len(sequence) and step == 1 then skip it
+        - exact: whether to use non-divisible "tails" -- False is yes
+        """
+        self.keys = keys
+        self.size = size
+        self.exact = exact
+
+    def __call__(self, **sample: dict) -> dict:
+        # pack = pack.copy()
+        video = DictTool.getattr(sample, self.keys[0])
+        size = len(video)
+        if self.size >= size:
+            return sample
+        start, end = __class__.calc_strided_slicing_non_exact(self.size, size)
+        for key in self.keys:
+            input = DictTool.getattr(sample, key)
+            size2 = len(input)
+            assert size2 == size  # all sequences are equal-length
+            output = input[start:end]
+            DictTool.setattr(sample, key, output)
+        return sample
+
+    @staticmethod
+    def calc_strided_slicing_non_exact(target, size):
+        """
+        "non_exact" means there might be `size%target!=0`
+        """
+        assert size > target
+        start = random.randint(0, math.ceil(size / target) - 1) * target
+        if size % target != 0 and start > size - target:
+            start = size - target
         end = start + target
         return start, end
 

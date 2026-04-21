@@ -5,6 +5,7 @@ https://github.com/Genera1Z
 
 from argparse import ArgumentParser
 from pathlib import Path
+import json
 import os
 import random
 import shutil
@@ -13,6 +14,7 @@ import time
 import numpy as np
 import torch as pt
 import tqdm
+import wandb
 
 from object_centric_bench.datum import DataLoader
 from object_centric_bench.learn import MetricWrap
@@ -103,28 +105,16 @@ def set_seed(seed):
 
 def main(args):
     seed = args.seed
-    cfg_file = Path(args.cfg_file)
-    data_path = Path(args.data_dir)
-    save_dir = Path(args.save_dir)
-    ckpt_file = args.ckpt_file
     print(args)
 
-    if ckpt_file is None:
-        pass
-    elif isinstance(ckpt_file, str):
-        ckpt_file = Path(ckpt_file)
-    else:
-        assert isinstance(ckpt_file, (list, tuple))
-        ckpt_file = [Path(_) for _ in ckpt_file]
+    assert args.cfg_file.name.endswith(".py")
+    assert args.cfg_file.is_file()
+    cfg_name = args.cfg_file.name.split(".")[0]
+    cfg = Config.fromfile(args.cfg_file)
 
-    assert cfg_file.name.endswith(".py")
-    assert cfg_file.is_file()
-    cfg_name = cfg_file.name.split(".")[0]
-    cfg = Config.fromfile(cfg_file)
-
-    save_path = Path(save_dir) / cfg_name / str(seed)
+    save_path = args.save_dir / cfg_name / str(seed)
     save_path.mkdir(parents=True, exist_ok=True)
-    shutil.copy(cfg_file, save_path.parent)
+    shutil.copy(args.cfg_file, save_path.parent)
 
     set_seed(seed)  # for reproducibility
     pt.backends.cudnn.benchmark = False  # XXX True: faster but stochastic
@@ -137,7 +127,7 @@ def main(args):
     rng = pt.Generator()
     rng.manual_seed(seed)
 
-    cfg.dataset_t.base_dir = cfg.dataset_v.base_dir = data_path
+    cfg.dataset_t.base_dir = cfg.dataset_v.base_dir = args.data_dir
 
     dataset_t = build_from_config(cfg.dataset_t)
     dataload_t = DataLoader(
@@ -168,19 +158,19 @@ def main(args):
     print(model)
     model = ModelWrap(model, cfg.model_imap, cfg.model_omap)
 
-    if ckpt_file:
-        if isinstance(ckpt_file, (list, tuple)):
-            if len(ckpt_file) == 1:
+    if args.ckpt_file:
+        if isinstance(args.ckpt_file, (list, tuple)):
+            if len(args.ckpt_file) == 1:
                 cfg.ckpt_map = [cfg.ckpt_map]
-            assert len(ckpt_file) == len(cfg.ckpt_map)
-            [model.load(_, __) for _, __ in zip(ckpt_file, cfg.ckpt_map)]
+            assert len(args.ckpt_file) == len(cfg.ckpt_map)
+            [model.load(_, __) for _, __ in zip(args.ckpt_file, cfg.ckpt_map)]
         else:
-            model.load(ckpt_file, cfg.ckpt_map)
+            model.load(args.ckpt_file, cfg.ckpt_map)
     if cfg.freez:
         model.freez(cfg.freez)
 
     model = model.cuda()
-    model.compile()  # TODO XXX comment this for debugging
+    # model.compile()  # TODO XXX comment this for debugging
 
     ## learn init
 
@@ -199,9 +189,19 @@ def main(args):
     acc_fn_v = MetricWrap(detach=True, **build_from_config(cfg.acc_fn_v))
     # acc_fn.compile()  # sometimes nan ???
 
+    if args.project:
+        wabrun = wandb.init(  # comment this to disable wandb
+            project=args.project,
+            group=f"{Path('').cwd().name}/{cfg_name}",
+            name=f"{seed}",
+            config=json.loads(json.dumps(cfg.__dict__, default=str)),
+            reinit=True,
+        )
     for cb in cfg.callback_t + cfg.callback_v:
         if cb.type.__name__ in ["AverageLog", "HandleLog"]:
             cb.log_file = f"{save_path}.txt"
+            if args.project:
+                cb.wabrun = wabrun  # comment this to disable wandb
         elif cb.type.__name__ == "SaveModel":
             cb.save_dir = save_path
     callback_t = build_from_config(cfg.callback_t)
@@ -248,6 +248,7 @@ def main(args):
 
 def parse_args():
     parser = ArgumentParser()
+    parser.add_argument("--project", type=str, default=None)
     parser.add_argument(
         "--seed",
         type=int,
@@ -255,16 +256,16 @@ def parse_args():
     )
     parser.add_argument(
         "--cfg_file",
-        type=str,  # TODO XXX
+        type=Path,  # TODO XXX
         default="config-smoothsa/smoothsa_r-coco.py",
     )
     parser.add_argument(  # TODO XXX
-        "--data_dir", type=str, default="/media/GeneralZ/Storage/Static/datasets"
+        "--data_dir", type=Path, default="/media/GeneralZ/Storage/Static/datasets"
     )
-    parser.add_argument("--save_dir", type=str, default="save")
+    parser.add_argument("--save_dir", type=Path, default="save")
     parser.add_argument(
         "--ckpt_file",
-        type=str,
+        type=Path,
         nargs="+",
         # default="archive-hwm/spott_r_randar-ytvis/best.pth",
         # default=[
@@ -276,5 +277,4 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    # with pt.autograd.detect_anomaly(True):  # detect NaN
     main(parse_args())

@@ -1,13 +1,14 @@
 import torch.nn.functional as ptnf
 
 from object_centric_bench.datum import (
+    StridedRandomSliceSequence,
     RandomCrop,
     Resize,
     RandomFlip,
     Normalize,
     CenterCrop,
     Lambda,
-    MSCOCO,
+    YTVIS,
     ClPadToMax1,
     DefaultCollate,
     Xywh2Ltrb,
@@ -34,18 +35,18 @@ from object_centric_bench.util_model import interpolat_argmax_attent
 
 ### global
 
-max_num = 7
+max_num = 6 + 1
 resolut0 = [256, 256]
 resolut1 = [16, 16]
 emb_dim = 256
 vfm_dim = 384
-ncls = 90 + 1
+ncls = 40 + 1
 cbox = 4
 
-total_step = 10000
+total_step = 5000
 val_interval = total_step // 40
-batch_size_t = 64 // 2  # 64 better
-batch_size_v = batch_size_t
+batch_size_t = 32 // 4  # 64 better
+batch_size_v = 1
 num_work = 4
 lr = 1e-3
 
@@ -55,36 +56,40 @@ IMAGENET_MEAN = [[[123.675]], [[116.28]], [[103.53]]]
 IMAGENET_STD = [[[58.395]], [[57.12]], [[57.375]]]
 transform_t = [
     # the following 2 == RandomResizedCrop: better than max sized random crop
-    dict(type=RandomCrop, keys=["image", "segment"], size=None, scale=[0.75, 1]),
-    dict(type=Resize, keys=["image"], size=resolut0, interp="bilinear"),
+    dict(type=RandomCrop, keys=["video", "segment"], size=None, scale=[0.75, 1]),
+    dict(type=Resize, keys=["video"], size=resolut0, interp="bilinear"),
     dict(type=Resize, keys=["segment"], size=resolut0, interp="nearest-exact", c=0),
-    dict(type=RandomFlip, keys=["image", "segment"], dims=[-1], p=0.5),
-    dict(type=Normalize, keys=["image"], mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    dict(type=RandomFlip, keys=["video", "segment"], dims=[-1], p=0.5),
+    dict(type=Normalize, keys=["video"], mean=[IMAGENET_MEAN], std=[IMAGENET_STD]),
 ]
 transform_v = [
-    dict(type=CenterCrop, keys=["image", "segment"], size=None),
-    dict(type=Resize, keys=["image"], size=resolut0, interp="bilinear"),
+    dict(type=CenterCrop, keys=["video", "segment"], size=None),
+    dict(type=Resize, keys=["video"], size=resolut0, interp="bilinear"),
     dict(type=Resize, keys=["segment"], size=resolut0, interp="nearest-exact", c=0),
-    dict(type=Normalize, keys=["image"], mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    dict(type=Normalize, keys=["video"], mean=[IMAGENET_MEAN], std=[IMAGENET_STD]),
 ]
 dataset_t = dict(
-    type=MSCOCO,
-    data_file="coco/train.lmdb",
+    type=YTVIS,
+    data_file="ytvis_hq/train.lmdb",
     extra_keys=["segment", "bbox", "clazz"],
+    transform0=dict(
+        type=StridedRandomSliceSequence, keys=["video", "segment", "clazz"], size=5
+    ),
     transform=dict(type=Compose, transforms=transform_t),
     base_dir=...,
+    ts=30,
 )
 dataset_v = dict(
-    type=MSCOCO,
-    data_file="coco/val.lmdb",
+    type=YTVIS,
+    data_file="ytvis_hq/val.lmdb",
     extra_keys=["segment", "bbox", "clazz"],
     transform=dict(type=Compose, transforms=transform_v),
     base_dir=...,
 )
-collate_fn_t = dict(  # (b,h,w,s) (b,s,c) (b,s)
+collate_fn_t = dict(  # (b,t,h,w,s) (b,t,s,c) (b,t,s)
     type=ComposeNoStar,
     transforms=[
-        dict(type=ClPadToMax1, keys=["segment", "bbox", "clazz"], dims=[2, 0, 0]),
+        dict(type=ClPadToMax1, keys=["segment", "bbox", "clazz"], dims=[3, 1, 1]),
         dict(type=DefaultCollate),
     ],
 )
@@ -108,17 +113,17 @@ model = dict(
     segpd_func=lambda _: ptnf.one_hot(
         interpolat_argmax_attent(_.detach(), size=resolut0).long()
     ).bool(),
-    slotz_rearr="b s c -> b s c",
-    segpd_rearr="b h w s -> b (h w) s",
-    seggt_rearr="b h w s -> b (h w) s",
-    clsgt_rearr="b s -> b s",
-    boxgt_rearr="b s c -> b s c",
+    slotz_rearr="b t s c -> (b t) s c",
+    segpd_rearr="b t h w s -> (b t) (h w) s",
+    seggt_rearr="b t h w s -> (b t) (h w) s",
+    clsgt_rearr="b t s -> (b t) s",
+    boxgt_rearr="b t s c -> (b t) s c",
     ncls=ncls,
     cbox=cbox,
     thresh_iou=1e-1,
 )
 model_imap = dict(
-    input="batch.image",
+    input="batch.video",
     # condit=None
     seggt="batch.segment",
     clsgt="batch.clazz",
@@ -174,7 +179,7 @@ acc_fn_v = acc_fn_t.copy()
 before_step = [
     dict(
         type=Lambda,
-        ikeys=[["batch.image", "batch.segment", "batch.bbox", "batch.clazz"]],
+        ikeys=[["batch.video", "batch.segment", "batch.bbox", "batch.clazz"]],
         func=lambda _: _.cuda(),
     ),
     dict(

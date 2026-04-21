@@ -74,7 +74,6 @@ class ObjDiscovRecogn(nn.Module):
         clspd = clspd_boxpd[:, : self.ncls]  # (?,c=ncls)
         boxpd = clspd_boxpd[:, self.ncls :]  # (?,c=4)
         assert clspd_boxpd.shape[1] == self.ncls + self.cbox
-        # print(clsgt.shape, boxgt.shape)
 
         return slotz, clspd, boxpd, clsgt, boxgt, rcidx
 

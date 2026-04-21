@@ -1,6 +1,3 @@
-import importlib
-import sys
-
 import torch.nn.functional as ptnf
 
 from object_centric_bench.datum import (
@@ -32,7 +29,7 @@ from object_centric_bench.model import (
     MLP,
     ObjDiscovRecogn,
 )
-from object_centric_bench.util import Compose, ComposeNoStar
+from object_centric_bench.util import Compose, ComposeNoStar, importlib_cfg
 from object_centric_bench.util_model import interpolat_argmax_attent
 
 ### global
@@ -95,8 +92,7 @@ collate_fn_v = collate_fn_t
 
 ### model
 
-sys.path.append(".")
-cfg_dict = importlib.import_module("spot_r-coco").__dict__
+cfg_dict = importlib_cfg(__file__.replace("_recogn", ""))
 discov = cfg_dict["model"]
 
 recogn = dict(
@@ -108,7 +104,7 @@ model = dict(
     discov=discov,
     recogn=recogn,
     slotz_idx=1,
-    attpd_idx=2,  # TODO XXX 3
+    attpd_idx=2,  # TODO XXX
     segpd_func=lambda _: ptnf.one_hot(
         interpolat_argmax_attent(_.detach(), size=resolut0).long()
     ).bool(),
@@ -119,7 +115,7 @@ model = dict(
     boxgt_rearr="b s c -> b s c",
     ncls=ncls,
     cbox=cbox,
-    thresh_iou=1e-3,
+    thresh_iou=1e-1,
 )
 model_imap = dict(
     input="batch.image",

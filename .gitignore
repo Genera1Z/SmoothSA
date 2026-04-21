@@ -16,3 +16,5 @@ archive-*
 *sh
 
 save
+
+wandb

@@ -1,10 +1,7 @@
-import importlib
-import sys
-
 import torch.nn.functional as ptnf
 
 from object_centric_bench.datum import (
-    StridedRandomSlice1,
+    StridedRandomSliceSequence,
     RandomCrop,
     Resize,
     RandomFlip,
@@ -33,7 +30,7 @@ from object_centric_bench.model import (
     MLP,
     ObjDiscovRecogn,
 )
-from object_centric_bench.util import Compose, ComposeNoStar
+from object_centric_bench.util import Compose, ComposeNoStar, importlib_cfg
 from object_centric_bench.util_model import interpolat_argmax_attent
 
 ### global
@@ -58,8 +55,6 @@ lr = 1e-3
 IMAGENET_MEAN = [[[123.675]], [[116.28]], [[103.53]]]
 IMAGENET_STD = [[[58.395]], [[57.12]], [[57.375]]]
 transform_t = [
-    # (t=20,c,h,w) (t,n,c=4) (t,h,w)
-    dict(type=StridedRandomSlice1, keys=["video", "segment"], dim=0, size=5),
     # the following 2 == RandomResizedCrop: better than max sized random crop
     dict(type=RandomCrop, keys=["video", "segment"], size=None, scale=[0.75, 1]),
     dict(type=Resize, keys=["video"], size=resolut0, interp="bilinear"),
@@ -75,16 +70,18 @@ transform_v = [
 ]
 dataset_t = dict(
     type=YTVIS,
-    data_file="ytvis/train.lmdb",
-    ts=20,
+    data_file="ytvis_2022/train.lmdb",
     extra_keys=["segment", "bbox", "clazz"],
+    transform0=dict(
+        type=StridedRandomSliceSequence, keys=["video", "segment", "clazz"], size=5
+    ),
     transform=dict(type=Compose, transforms=transform_t),
     base_dir=...,
+    ts=30,
 )
 dataset_v = dict(
     type=YTVIS,
-    data_file="ytvis/val.lmdb",
-    ts=None,
+    data_file="ytvis_2022/val.lmdb",
     extra_keys=["segment", "bbox", "clazz"],
     transform=dict(type=Compose, transforms=transform_v),
     base_dir=...,
@@ -100,8 +97,7 @@ collate_fn_v = collate_fn_t
 
 ### model
 
-sys.path.append(".")
-cfg_dict = importlib.import_module("smoothsav_r-ytvis").__dict__
+cfg_dict = importlib_cfg(__file__.replace("_recogn", ""))
 discov = cfg_dict["model"]
 
 recogn = dict(

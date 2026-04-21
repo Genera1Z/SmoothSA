@@ -136,7 +136,7 @@ model = dict(
     ),
     decode=dict(
         type=ARRandTransformerDecoder,
-        vfm_dim=vfm_dim,
+        emb_dim=vfm_dim,
         posit_embed=dict(
             type=LearntPositionalEmbedding,
             resolut=[resolut1[0] * resolut1[1]],

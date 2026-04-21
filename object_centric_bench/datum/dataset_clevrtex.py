@@ -5,8 +5,8 @@ https://github.com/Genera1Z
 
 from pathlib import Path
 import pickle as pkl
-import time
 
+from tqdm import tqdm
 import cv2
 import numpy as np
 import torch as pt
@@ -18,7 +18,8 @@ from ..util_datum import rgb_segment_to_index_segment, draw_segmentation_np
 
 
 class ClevrTex(ptud.Dataset):
-    """ClevrTex: A Texture-Rich Benchmark for Unsupervised Multi-Object Segmentation
+    """
+    ClevrTex: A Texture-Rich Benchmark for Unsupervised Multi-Object Segmentation
     https://www.robots.ox.ac.uk/~vgg/data/clevrtex
 
     Example
@@ -80,20 +81,25 @@ class ClevrTex(ptud.Dataset):
 
         if "segment" in self.extra_keys:
             segment = pt.from_numpy(
-                cv2.imdecode(sample0["segment"], cv2.IMREAD_GRAYSCALE)
+                cv2.imdecode(sample0["segment"], cv2.IMREAD_UNCHANGED)
             )
             sample1["segment"] = segment  # (h,w) uint8
+            s0 = segment.max() + 1
 
         if "depth" in self.extra_keys:
-            depth = pt.from_numpy(cv2.imdecode(sample0["depth"], cv2.IMREAD_GRAYSCALE))
+            depth = pt.from_numpy(cv2.imdecode(sample0["depth"], cv2.IMREAD_UNCHANGED))
             sample1["depth"] = depth  # (h,w) uint8
 
         sample2 = self.transform(**sample1)
 
         if "segment" in self.extra_keys:
-            segment2 = sample2["segment"]  # index format
-            segment3 = ptnf.one_hot(segment2.long()).bool()  # mask format
+            segment2 = sample2["segment"]  # (h,w); index format
+            # (h,w,s); mask format
+            segment3 = ptnf.one_hot(segment2.long(), s0).bool()
 
+            # ``RandomCrop`` and ``CenterCrop`` can diminish segments
+            cond = segment3.any([0, 1])  # (s,)
+            segment3 = segment3[:, :, cond]
             sample2["segment"] = segment3  # (h,w,s) bool
 
         return sample2
@@ -123,20 +129,12 @@ class ClevrTex(ptud.Dataset):
             - *.png
           ...
           - 49
-            - *.png
         - clevrtex_outd  # as validation set
           - 0
-            - *.png
           ...
-          - 9
-            - *.png
         """
         dst_dir.mkdir(parents=True, exist_ok=True)
-
-        splits = dict(
-            train="clevrtex_full",
-            val="clevrtex_outd",
-        )
+        splits = dict(train="clevrtex_full", val="clevrtex_outd")
 
         for split, image_dn in splits.items():
             image_path = src_dir / image_dn
@@ -152,9 +150,8 @@ class ClevrTex(ptud.Dataset):
 
             keys = []
             txn = lmdb_env.begin(write=True)
-            t0 = time.time()
 
-            for cnt in range(total_num):
+            for cnt in tqdm(range(total_num)):
                 files = scenes[cnt * 6 : cnt * 6 + 6]
                 assert files[0].name.split(".")[0].split("_")[2].isnumeric()
                 image_file = str(files[0])
@@ -165,25 +162,31 @@ class ClevrTex(ptud.Dataset):
 
                 with open(image_file, "rb") as f:
                     image_b = f.read()
-                segment_bgr = cv2.imread(segment_file)  # (h,w,c=3)
-                segment_rgb = cv2.cvtColor(segment_bgr, cv2.COLOR_BGR2RGB)
+                segment_rgb = cv2.cvtColor(  # (h,w,c=3)
+                    cv2.imread(segment_file), cv2.COLOR_BGR2RGB
+                )
                 segment = rgb_segment_to_index_segment(segment_rgb)  # (h,w)
                 depth = cv2.imread(depth_file)[:, :, 0]  # (h,w,c=1) -> (h,w)
 
-                # image = cv2.imdecode(np.frombuffer(image_b, "uint8"), cv2.IMREAD_COLOR)
-                # __class__.visualiz(image=image, segment=segment, depth=depth, wait=0)
+                # image = cv2.cvtColor(
+                #     cv2.imdecode(np.frombuffer(image_b, "uint8"), cv2.IMREAD_UNCHANGED),
+                #     cv2.COLOR_BGR2RGB,
+                # )
+                # segment_msk = ptnf.one_hot(pt.from_numpy(segment).long()).bool().numpy()
+                # __class__.visualiz(
+                #     image=image, segment=segment_msk, depth=depth, wait=0
+                # )
+
+                assert segment.shape == (240, 320) and segment.dtype == np.uint8
+                assert depth.shape == (240, 320) and depth.dtype == np.uint8
 
                 sample_key = f"{cnt:06d}".encode("ascii")
                 keys.append(sample_key)
 
-                assert type(image_b) == bytes
-                assert segment.ndim == 2 and segment.dtype == np.uint8
-                assert depth.ndim == 2 and depth.dtype == np.uint8
-
                 sample_dict = dict(
                     image=image_b,  # (h,w,c=3) bytes
-                    segment=cv2.imencode(".webp", segment)[1],  # (h,w) uint8
-                    depth=cv2.imencode(".webp", depth)[1],  # (h,w) uint8
+                    segment=cv2.imencode(".png", segment)[1],  # (h,w) uint8
+                    depth=cv2.imencode(".png", depth)[1],  # (h,w) uint8
                 )
                 txn.put(sample_key, pkl.dumps(sample_dict))
 
@@ -198,27 +201,32 @@ class ClevrTex(ptud.Dataset):
             txn.commit()
             lmdb_env.close()
 
-            print(f"total={cnt + 1}, time={time.time() - t0}")
-
     @staticmethod
     def visualiz(image, segment=None, depth=None, wait=0):
         """
-        - image: rgb format, shape=(h,w,c=3), uint8
-        - segment: mask format, shape=(h,w,s), bool
-        - depth: shape=(h,w), uint8
+        - image: (h,w,c=3) uint8, rgb format
+        - segment: (h,w,s) bool, mask format
+        - depth: (h,w) uint8
         """
-        assert image.ndim == 3 and image.shape[2] == 3 and image.dtype == np.uint8
+        h, w, ci = image.shape
+        assert ci == 3 and image.dtype == np.uint8
+
+        if segment is not None:
+            h, w, cs = segment.shape
+            assert segment.dtype == bool
+
+        if depth is not None:
+            h, w = depth.shape
+            assert depth.dtype == np.uint8
 
         cv2.imshow("i", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
 
         segment_viz = None
         if segment is not None:
-            assert segment.ndim == 3 and segment.dtype == bool
             segment_viz = draw_segmentation_np(image, segment, alpha=0.75)
             cv2.imshow("s", cv2.cvtColor(segment_viz, cv2.COLOR_RGB2BGR))
 
         if depth is not None:
-            assert depth.ndim == 2 and depth.dtype == np.uint8
             cv2.imshow("d", depth)
 
         cv2.waitKey(wait)

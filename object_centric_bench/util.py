@@ -3,9 +3,10 @@ Copyright (c) 2024 Genera1Z
 https://github.com/Genera1Z
 """
 
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from pathlib import Path
 import importlib
-import pathlib as pl
-import sys
+import os
 
 
 class Config(dict):
@@ -46,17 +47,12 @@ class Config(dict):
     __setitem__ = __setattr__
 
     @staticmethod
-    def fromfile(cfg_file: pl.Path) -> "Config":
-        if isinstance(cfg_file, str):
-            cfg_file = pl.Path(cfg_file)
-        assert cfg_file.name.endswith(".py")
-        assert cfg_file.is_file()
-        file_dir = str(cfg_file.absolute().parent)
-        fn = str(cfg_file.name).split(".")[0]
-        sys.path.append(file_dir)
-        module = importlib.import_module(fn)
-        # cfg_dict = { k: v for k, v in module.__dict__.items() if not (k.startswith("__") and k.endswith("__")) }
-        cfg_dict = module.__dict__
+    def fromfile(cfg_file: Path) -> "Config":
+        # if isinstance(cfg_file, str):
+        #     cfg_file = Path(cfg_file)
+        # assert cfg_file.name.endswith(".py")
+        # assert cfg_file.is_file()
+        cfg_dict = importlib_cfg(cfg_file)
         return Config(cfg_dict)
 
     def update(self, e=None, **f):
@@ -77,7 +73,7 @@ def build_from_config(cfg):
     if isinstance(cfg, (list, tuple)):  # iteration
         obj = [build_from_config(_) for _ in cfg]
     elif isinstance(cfg, dict):  # recursion
-        cfg = cfg.copy()  # TODO deepcopy ???
+        cfg = cfg.copy()  # deepcopy cannot pickle some objects
         if "type" in cfg:
             cls_key = cfg.pop("type")
         else:
@@ -175,3 +171,42 @@ class ComposeNoStar(Compose):
         for t in self.transforms:
             kwds = t(kwds)
         return kwds
+
+
+def concurrent_pool(func, iterables, nwork=None, mode="thread"):
+    ncpu = os.cpu_count() or 1
+    nwork = ncpu if nwork is None else min(ncpu, nwork)
+    if mode == "thread":
+        execut = ThreadPoolExecutor
+    elif mode == "process":
+        execut = ProcessPoolExecutor
+    else:
+        raise ValueError
+    with execut(nwork) as pool:
+        result = list(pool.map(func, *iterables))
+    return result
+
+
+def importlib_cfg(cfg_file, name="temp_cfg"):
+    if isinstance(cfg_file, str):
+        cfg_file = Path(cfg_file)
+    assert cfg_file.name.endswith(".py")
+    assert cfg_file.is_file()
+
+    # stateful solution: cache modules, causing strange error
+    # sys.path.append(file_dir)
+    # module = importlib.import_module(file_name)
+
+    # clean solution
+    spec = importlib.util.spec_from_file_location(name, cfg_file)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # cfg_dict = module.__dict__
+    cfg_dict = {
+        k: v
+        for k, v in module.__dict__.items()
+        if not (k.startswith("__") and k.endswith("__"))
+    }
+
+    return cfg_dict

@@ -6,8 +6,8 @@ https://github.com/Genera1Z
 from pathlib import Path
 import json
 import pickle as pkl
-import time
 
+from tqdm import tqdm
 import cv2
 import numpy as np
 import torch as pt
@@ -15,7 +15,7 @@ import torch.nn.functional as ptnf
 import torch.utils.data as ptud
 
 from .dataset import lmdb_open_read, lmdb_open_write
-from ..util_datum import draw_segmentation_np, mask_segment_to_bbox_np
+from ..util_datum import mask_segment_to_bbox_np, draw_segmentation_np
 
 
 class MSCOCO(ptud.Dataset):
@@ -76,7 +76,7 @@ class MSCOCO(ptud.Dataset):
             sample0 = pkl.loads(txn.get(self.idxs[index]))
         sample1 = {}
 
-        image0 = cv2.cvtColor(
+        image0 = cv2.cvtColor(  # there are some gray images, but
             cv2.imdecode(  # cvtColor will unify images to 3 channels safely
                 np.frombuffer(sample0["image"], "uint8"), cv2.IMREAD_UNCHANGED
             ),
@@ -87,29 +87,32 @@ class MSCOCO(ptud.Dataset):
 
         if "segment" in self.extra_keys:
             segment = pt.from_numpy(
-                cv2.imdecode(sample0["segment"], cv2.IMREAD_GRAYSCALE)
+                cv2.imdecode(sample0["segment"], cv2.IMREAD_UNCHANGED)
             )
             sample1["segment"] = segment  # (h,w) uint8
+            s0 = segment.max() + 1
 
             if "clazz" in self.extra_keys:
                 clazz = pt.from_numpy(sample0["clazz"])
                 sample1["clazz"] = clazz  # (s,) uint8
 
             isthing = pt.from_numpy(sample0["isthing"])  # (s,) bool
+            assert s0 == isthing.shape[0] + 1
 
         sample2 = self.transform(**sample1)
 
         if "segment" in self.extra_keys:
             segment2 = sample2["segment"]  # (h,w); index format
             # (h,w,s); mask format
-            segment3 = ptnf.one_hot(segment2.long(), isthing.shape[0] + 1).bool()
-            segment3 = segment3[:, :, 1:]  # remove unannotated area
+            segment3 = ptnf.one_hot(segment2.long(), s0).bool()
+            segment3 = segment3[:, :, 1:]  # remove the unannotated
 
             h, w, s = segment3.shape
             # assert s > 0  # some images have no annotation
 
             # ``RandomCrop`` and ``CenterCrop`` can diminish segments
             cond = segment3.any([0, 1])  # (s,)
+            isthing = isthing[cond]
 
             segment3 = segment3[:, :, cond]
             sample2["segment"] = segment3  # (h,w,s) bool
@@ -127,7 +130,6 @@ class MSCOCO(ptud.Dataset):
         if self.mode == "instance":
 
             if "segment" in sample2:
-                isthing = isthing[cond]
                 isstuff = ~isthing
 
                 segment9 = sample2["segment"]
@@ -173,29 +175,28 @@ class MSCOCO(ptud.Dataset):
 
         Structure dataset as follows and run it!
         - annotations
-          - panoptic_coco_categories.json
           - panoptic_train2017.json
           - panoptic_train2017
             - *.png
           - panoptic_val2017.json
           - panoptic_val2017
             - *.png
+        - panoptic_coco_categories.json
         - tain2017
           - *.jpg
         - val2017
           - *.jpg
         """
         dst_dir.mkdir(parents=True, exist_ok=True)
-
-        category_file = src_dir / "annotations" / "panoptic_coco_categories.json"
-        with open(category_file, "r") as f:
-            categories = json.load(f)
-        categories = {category["id"]: category for category in categories}
-
         splits = dict(
             train=["train2017", "annotations/panoptic_train2017"],
             val=["val2017", "annotations/panoptic_val2017"],
         )
+
+        category_file = src_dir / "panoptic_coco_categories.json"
+        with open(category_file, "r") as f:
+            categories = json.load(f)
+        categories = {category["id"]: category for category in categories}
 
         for split, [image_dn, segment_dn] in splits.items():
             print(split, image_dn, segment_dn)
@@ -210,10 +211,9 @@ class MSCOCO(ptud.Dataset):
 
             keys = []
             txn = lmdb_env.begin(write=True)
-            t0 = time.time()
 
             # https://github.com/cocodataset/panopticapi/blob/master/converters/panoptic2detection_coco_format.py
-            for cnt, annotat in enumerate(annotations):
+            for cnt, annotat in enumerate(tqdm(annotations)):
                 sids0 = [_["id"] for _ in annotat["segments_info"]]
                 assert len(sids0) == len(set(sids0)) < 256
                 sinfo0 = dict(zip(sids0, annotat["segments_info"]))
@@ -224,8 +224,9 @@ class MSCOCO(ptud.Dataset):
 
                 with open(image_file, "rb") as f:
                     image_b = f.read()
-                segment_bgr = cv2.imread(str(segment_file))  # (h,w,c=3)
-                segment_rgb = cv2.cvtColor(segment_bgr, cv2.COLOR_BGR2RGB)
+                segment_rgb = cv2.cvtColor(  # (h,w,c=3)
+                    cv2.imread(str(segment_file)), cv2.COLOR_BGR2RGB
+                )
                 segment0 = (  # (h,w)
                     (segment_rgb * [[[256**0, 256**1, 256**2]]]).sum(2).astype("int32")
                 )
@@ -250,19 +251,16 @@ class MSCOCO(ptud.Dataset):
                 clazz = np.array(clazz, "uint8")  # (s,)
                 isthing = np.array(isthing, "bool")  # (s,)
 
-                # image = cv2.imdecode(  # there are some grayscale images
-                #     np.frombuffer(image_b, "uint8"), cv2.IMREAD_COLOR
+                # image = cv2.cvtColor(
+                #     cv2.imdecode(np.frombuffer(image_b, "uint8"), cv2.IMREAD_UNCHANGED),
+                #     cv2.COLOR_BGR2RGB,
                 # )
                 # segment_pt = pt.from_numpy(segment).long()
-                # mask = ptnf.one_hot(segment_pt).bool().numpy()
+                # segment_msk = ptnf.one_hot(segment_pt).bool().numpy()
                 # if 0 in segment_pt.unique():  # if there is invalid annotation
-                #     mask = mask[:, :, 1:]
-                # __class__.visualiz(image, mask, None, clazz, wait=0)
+                #     segment_msk = segment_msk[:, :, 1:]
+                # __class__.visualiz(image, segment_msk, None, clazz, wait=0)
 
-                sample_key = f"{cnt:06d}".encode("ascii")
-                keys.append(sample_key)
-
-                assert type(image_b) == bytes
                 assert segment.ndim == 2 and segment.dtype == np.uint8
                 assert clazz.ndim == 1 and clazz.dtype == np.uint8
                 assert isthing.ndim == 1 and isthing.dtype == bool
@@ -272,9 +270,12 @@ class MSCOCO(ptud.Dataset):
                     == isthing.shape[0]
                 )
 
+                sample_key = f"{cnt:06d}".encode("ascii")
+                keys.append(sample_key)
+
                 sample_dict = dict(
                     image=image_b,  # (h,w,c=3) bytes
-                    segment=cv2.imencode(".webp", segment)[1],  # (h,w) uint8
+                    segment=cv2.imencode(".png", segment)[1],  # (h,w) uint8
                     clazz=clazz,  # (s,) uint8
                     isthing=isthing,  # (s,) bool
                 )
@@ -291,28 +292,29 @@ class MSCOCO(ptud.Dataset):
             txn.commit()
             lmdb_env.close()
 
-            print(f"total={cnt + 1}, time={time.time() - t0}")
-
     @staticmethod
     def visualiz(image, segment=None, bbox=None, clazz=None, wait=0):
         """
-        - image: rgb format, shape=(h,w,c=3), uint8
-        - segment: mask format, shape=(h,w,s), bool
-        - bbox: both-side normalized ltrb, shape=(s,c=4), float32
-        - clazz: shape=(s,), uint8
+        - image: (h,w,c=3) uint8, rgb format
+        - segment: (h,w,s) bool, mask format
+        - bbox: (s,c=4) float32, ltrb format, dual normalized
+        - clazz: (s,) uint8
         """
-        assert image.ndim == 3 and image.shape[2] == 3 and image.dtype == np.uint8
+        h, w, ci = image.shape
+        assert ci == 3 and image.dtype == np.uint8
 
         cv2.imshow("i", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
 
         segment_viz = None
-        if segment is not None and segment.shape[2]:
-            assert segment.ndim == 3 and segment.dtype == bool
+        if segment is not None:
+            h, w, cs = segment.shape
+            assert segment.dtype == bool
+
             segment_viz = draw_segmentation_np(image, segment, alpha=0.75)
 
             if bbox is not None:
-                ds = segment.shape[2] - bbox.shape[0]
-                assert ds in [0, 1]
+                dsb = cs - bbox.shape[0]
+                assert dsb in [0, 1]
                 assert (
                     bbox.ndim == 2 and bbox.shape[1] == 4 and bbox.dtype == np.float32
                 )
@@ -326,15 +328,15 @@ class MSCOCO(ptud.Dataset):
                     )
 
             if clazz is not None:
-                ds = segment.shape[2] - clazz.shape[0]
-                assert ds in [0, 1]
+                dsc = cs - clazz.shape[0]
+                assert dsc in [0, 1]
                 assert clazz.ndim == 1 and clazz.dtype == np.uint8
                 if bbox is not None:
                     assert clazz.shape[0] == bbox.shape[0]
 
                 for i, clz in enumerate(clazz):
                     mask = segment[
-                        :, :, i + ds
+                        :, :, i + dsc
                     ]  # skip annotated area (panoptic) or bg (instance)
                     total = float(np.sum(mask))
                     assert total > 0

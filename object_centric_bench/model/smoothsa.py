@@ -289,13 +289,14 @@ from .basic import MLP
 
 class NormalMlpPreheated(nn.Module):
 
-    def __init__(self, in_dim, dims, kv_dim):
+    def __init__(self, in_dim, dims, kv_dim, mlpln="post", pad_value=-1):
         super().__init__()
         emb_dim = dims[-1]
         self.emb_dim = emb_dim
         self.kv_dim = kv_dim
+        self.pad_value = pad_value
 
-        self.mlp = MLP(in_dim, dims, "post", 0)
+        self.mlp = MLP(in_dim, dims, mlpln, 0)
         self.logstd = nn.Parameter(pt.zeros(1, 1, emb_dim, dtype=pt.float))
         """
         ln0post + randn0/1*1      bbox_pad_value=-1     bbox_pad_size=auto    ############################################

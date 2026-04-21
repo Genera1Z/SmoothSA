@@ -2,14 +2,16 @@ from einops import rearrange
 import torch.nn.functional as ptnf
 
 from object_centric_bench.datum import (
+    StridedRandomSliceSequence,
     RandomCrop,
     Resize,
     RandomFlip,
     Normalize,
     CenterCrop,
     Lambda,
-    ClevrTex,
+    MOVi,
     ClPadToMax1,
+    ClPadTo1,
     DefaultCollate,
 )
 from object_centric_bench.learn import (
@@ -17,24 +19,28 @@ from object_centric_bench.learn import (
     GradScaler,
     ClipGradNorm,
     MSELoss,
+    SlotContrastLoss,
     mBO,
     ARI,
     mIoU,
     CbLinearCosine,
+    CbSquarewave,
     Callback,
     AverageLog,
     SaveModel,
 )
 from object_centric_bench.model import (
-    SPOT,
+    SmoothSAVideo,
     Sequential,
     Interpolate,
     DINO2ViT,
     Identity,
     MLP,
-    NormalShared,
+    NormalMlpPreheated,
     SlotAttention,
-    AR9TransformerDecoder,
+    RSFQTransit,
+    ARRandTransformerDecoder,
+    LearntPositionalEmbedding,
     Linear,
     LayerNorm,
     TransformerDecoder,
@@ -45,7 +51,7 @@ from object_centric_bench.util_model import interpolat_argmax_attent
 
 ### global
 
-max_num = 10 + 1
+max_num = 23 + 1
 resolut0 = [256, 256]
 resolut1 = [16, 16]
 emb_dim = 256
@@ -53,10 +59,10 @@ vfm_dim = 384
 
 total_step = 50000  # 100000 better
 val_interval = total_step // 40
-batch_size_t = 64 // 2  # 64 better
+batch_size_t = 32 // 4  # 64 better
 batch_size_v = batch_size_t
 num_work = 4
-lr = 4e-4 / 2  # scale with batch_size
+lr = 2e-4 / 4  # scale with batch_size
 
 ### datum
 
@@ -64,36 +70,38 @@ IMAGENET_MEAN = [[[123.675]], [[116.28]], [[103.53]]]
 IMAGENET_STD = [[[58.395]], [[57.12]], [[57.375]]]
 transform_t = [
     # the following 2 == RandomResizedCrop: better than max sized random crop
-    dict(type=RandomCrop, keys=["image", "segment"], size=None, scale=[0.75, 1]),
-    dict(type=Resize, keys=["image"], size=resolut0, interp="bilinear"),
+    dict(type=RandomCrop, keys=["video", "segment"], size=None, scale=[0.75, 1]),
+    dict(type=Resize, keys=["video"], size=resolut0, interp="bilinear"),
     dict(type=Resize, keys=["segment"], size=resolut0, interp="nearest-exact", c=0),
-    dict(type=RandomFlip, keys=["image", "segment"], dims=[-1], p=0.5),
-    dict(type=Normalize, keys=["image"], mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    dict(type=RandomFlip, keys=["video", "segment"], dims=[-1], p=0.5),
+    dict(type=Normalize, keys=["video"], mean=[IMAGENET_MEAN], std=[IMAGENET_STD]),
 ]
 transform_v = [
-    dict(type=CenterCrop, keys=["image", "segment"], size=None),
-    dict(type=Resize, keys=["image"], size=resolut0, interp="bilinear"),
+    dict(type=CenterCrop, keys=["video", "segment"], size=None),
+    dict(type=Resize, keys=["video"], size=resolut0, interp="bilinear"),
     dict(type=Resize, keys=["segment"], size=resolut0, interp="nearest-exact", c=0),
-    dict(type=Normalize, keys=["image"], mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    dict(type=Normalize, keys=["video"], mean=[IMAGENET_MEAN], std=[IMAGENET_STD]),
 ]
 dataset_t = dict(
-    type=ClevrTex,
-    data_file="clevrtex/train.lmdb",
-    extra_keys=["segment"],
+    type=MOVi,
+    data_file="movi_e/train.lmdb",
+    extra_keys=["segment", "bbox"],
+    transform0=dict(type=StridedRandomSliceSequence, keys=["video", "segment"], size=6),
     transform=dict(type=Compose, transforms=transform_t),
     base_dir=...,
 )
 dataset_v = dict(
-    type=ClevrTex,
-    data_file="clevrtex/val.lmdb",
-    extra_keys=["segment"],
+    type=MOVi,
+    data_file="movi_e/val.lmdb",
+    extra_keys=["segment", "bbox"],
     transform=dict(type=Compose, transforms=transform_v),
     base_dir=...,
 )
 collate_fn_t = dict(
     type=ComposeNoStar,
     transforms=[
-        dict(type=ClPadToMax1, keys=["segment"], dims=[2]),
+        dict(type=ClPadToMax1, keys=["segment"], dims=[3]),
+        dict(type=ClPadTo1, keys=["bbox"], dims=[1], num=None, value=-1),
         dict(type=DefaultCollate),
     ],
 )
@@ -102,7 +110,7 @@ collate_fn_v = collate_fn_t
 ### model
 
 model = dict(
-    type=SPOT,
+    type=SmoothSAVideo,
     encode_backbone=dict(
         type=Sequential,
         modules=[
@@ -112,15 +120,21 @@ model = dict(
                 model_name="vit_small_patch14_reg4_dinov2.lvd142m",
                 in_size=int(resolut0[0] * 0.875),
                 rearrange=True,
-                norm_out=False,  # >True
+                norm_out=False,
             ),
         ],
     ),
     encode_posit_embed=dict(type=Identity),
-    encode_project=dict(  # > [vfm_dim * 2, embed_dim]
+    encode_project=dict(
         type=MLP, in_dim=vfm_dim, dims=[vfm_dim, vfm_dim], ln="pre", dropout=0.0
     ),
-    initializ=dict(type=NormalShared, num=max_num, dim=emb_dim),
+    initializ=dict(
+        type=NormalMlpPreheated,
+        in_dim=4,
+        dims=[emb_dim, emb_dim],
+        kv_dim=vfm_dim,
+        pad_value=-1,
+    ),
     aggregat=dict(
         type=SlotAttention,
         num_iter=3,
@@ -128,13 +142,27 @@ model = dict(
         ffn_dim=emb_dim * 4,
         dropout=0,
         kv_dim=vfm_dim,
-        trunc_bp=None,
+        trunc_bp="bi-level",
+    ),
+    transit=dict(
+        type=RSFQTransit,
+        dt=6,  # XXX XXX XXX
+        ci=vfm_dim,
+        c=emb_dim,
+        nhead=4,
+        expanz=4,
+        pdo=0.5,  # XXX XXX XXX
+        norm_first=False,
+        bias=False,
     ),
     decode=dict(
-        type=AR9TransformerDecoder,
-        resolut=resolut1,
+        type=ARRandTransformerDecoder,
         emb_dim=vfm_dim,
-        posit_embed=dict(type=Identity),
+        posit_embed=dict(
+            type=LearntPositionalEmbedding,
+            resolut=[resolut1[0] * resolut1[1]],
+            embed_dim=vfm_dim,
+        ),
         project1=dict(  # fc>fc+ln
             type=Sequential,
             modules=[
@@ -169,12 +197,10 @@ model = dict(
             num_layers=4,
         ),
         readout=dict(type=Identity),
-        perm_t="random",
-        perm_v="default",  # TODO all
     ),
 )
-model_imap = dict(input="batch.image")
-model_omap = ["feature", "slotz", "attenta", "recon", "attentd"]
+model_imap = dict(input="batch.video", condit="batch.bbox")
+model_omap = ["feature", "qinit", "slotz", "attenta", "recon", "attentd"]
 ckpt_map = []  # target<-source
 freez = [r"^m\.encode_backbone\..*"]
 
@@ -183,13 +209,26 @@ freez = [r"^m\.encode_backbone\..*"]
 param_groups = None
 optimiz = dict(type=Adam, params=param_groups, lr=lr)
 gscale = dict(type=GradScaler)
-gclip = dict(type=ClipGradNorm, max_norm=0.3, norm_type="inf")
+gclip = dict(type=ClipGradNorm, max_norm=0.05)
 
 loss_fn_t = loss_fn_v = dict(
     recon=dict(
         metric=dict(type=MSELoss),
         map=dict(input="output.recon", target="output.feature"),
         transform=dict(type=Lambda, ikeys=[["target"]], func=lambda _: _.detach()),
+    ),
+    ssc=dict(
+        metric=dict(type=SlotContrastLoss),
+        map=dict(input="output.slotz"),
+        weight=0.5,
+    ),
+    preheat=dict(
+        metric=dict(type=MSELoss),  # (b,s,c) (b,t,s,c)
+        map=dict(input="output.qinit", target="output.slotz"),
+        transform=dict(
+            type=Lambda, ikeys=[["target"]], func=lambda _: _[:, 0, :, :].detach()
+        ),
+        weight=100,
     ),
 )
 _acc_dict_ = dict(
@@ -198,7 +237,7 @@ _acc_dict_ = dict(
     transform=dict(
         type=Lambda,
         ikeys=[["input", "target"]],
-        func=lambda _: rearrange(_, "b h w s -> b (h w) s"),
+        func=lambda _: rearrange(_, "b t h w s -> b (t h w) s"),
     ),
 )
 acc_fn_t = dict(
@@ -213,7 +252,9 @@ acc_fn_v = dict(
 
 before_step = [
     dict(
-        type=Lambda, ikeys=[["batch.image", "batch.segment"]], func=lambda _: _.cuda()
+        type=Lambda,
+        ikeys=[["batch.video", "batch.segment", "batch.bbox"]],
+        func=lambda _: _.cuda(),
     ),
     dict(
         type=CbLinearCosine,
@@ -222,13 +263,19 @@ before_step = [
         ntotal=total_step,
         vstart=0,
         vbase=lr,
-        vfinal=lr / 1e3,  # 1e3 > 1e4
+        vfinal=lr / 1e3,
+    ),
+    dict(
+        type=CbSquarewave,
+        assigns=["model.m.initializ.detach_flag.data[...]=value"],
+        points=[0, total_step // 10, total_step],
+        values=[1, 0],
     ),
 ]
 after_forward = [
     dict(
         type=Lambda,
-        ikeys=[["output.attentd"]],  # (b,s,h,w) -> (b,h,w,s)
+        ikeys=[["output.attentd"]],  # (b,t,s,h,w) -> (b,t,h,w,s)
         func=lambda _: ptnf.one_hot(
             interpolat_argmax_attent(_.detach(), size=resolut0).long()
         ).bool(),

@@ -14,13 +14,19 @@ from .callback import Callback
 
 
 class AverageLog(Callback):
-    """"""
+    """Suppose `wandb` initialized."""
 
     def __init__(
-        self, log_file=None, epoch_key="epoch", loss_key="loss", acc_key="acc"
+        self,
+        log_file=None,
+        epoch_key="epoch",
+        loss_key="loss",
+        acc_key="acc",
+        wabrun=None,
     ):
         super().__init__()
         self.log_file = log_file
+        self.wabrun = wabrun
         self.epoch_key = epoch_key
         self.loss_key = loss_key
         self.acc_key = acc_key
@@ -29,7 +35,8 @@ class AverageLog(Callback):
 
     @pt.inference_mode()
     def index(self, epoch, isval):
-        self.idx = f"{epoch}" if not isval else f"{epoch}/val"
+        self.idx = epoch
+        self.isval = isval
         self.state_dict.clear()
 
     @pt.inference_mode()
@@ -52,17 +59,28 @@ class AverageLog(Callback):
             metric2 = metric[valid]  # keep the valid ones  # (?,..)
             v2 = np.mean(metric2, 0)  # .round(8) can cause nan
             avg_dict[k] = v2.tolist()
+        suffix = "-val" if self.isval else ""
         if self.log_file:
-            __class__.save(self.idx, avg_dict, self.log_file)
-        print(self.idx, avg_dict)
+            __class__.save(self.idx, suffix, avg_dict, self.log_file)
+        if self.wabrun:
+            __class__.save_wab(self.idx, suffix, avg_dict, self.wabrun)
+        print(f"{self.idx}{suffix}", avg_dict)
         return avg_dict
 
     @pt.inference_mode()
     @staticmethod
-    def save(key, avg_dict, log_file):
+    def save(key, suffix, avg_dict, log_file):
+        key = f"{key}{suffix}"
         line = json.dumps({key: avg_dict})
         with open(log_file, "a") as f:
             f.write(line + "\n")
+
+    @pt.inference_mode()
+    @staticmethod
+    def save_wab(key, suffix, avg_dict, wabrun):
+        if suffix:
+            avg_dict = {f"{k}{suffix}": v for k, v in avg_dict.items()}
+        wabrun.log(data=avg_dict, step=key)
 
     @pt.inference_mode()
     def before_epoch(self, isval, **pack):
@@ -84,17 +102,23 @@ class AverageLog(Callback):
 
 
 class HandleLog(Callback):
-    """Generalized logger:
+    """Generalized logger from `AverageLog`:
     - can record anything into log;
     - can do any operation on the recorded logs.
     """
 
     def __init__(
-        self, log_file=None, epoch_key="epoch", ikeys=[[]], okeys=None, ops=[""]
+        self,
+        log_file=None,
+        epoch_key="epoch",
+        ikeys=[[]],
+        okeys=None,
+        ops=[""],
+        wabrun=None,
     ):
         super().__init__()
-
         self.log_file = log_file
+        self.wabrun = wabrun
         self.epoch_key = epoch_key
 
         assert (
@@ -116,7 +140,8 @@ class HandleLog(Callback):
 
     @pt.inference_mode()
     def index(self, epoch, isval):
-        self.idx = f"{epoch}" if not isval else f"{epoch}/val"
+        self.idx = epoch
+        self.isval = isval
         self.state_dict.clear()
 
     @pt.inference_mode()
@@ -142,17 +167,28 @@ class HandleLog(Callback):
                 metric2 = metric[valid]  # keep the valid ones  # (?,..)
                 v2 = np.__dict__[op](metric2, 0)
                 log_dict[okey] = v2.tolist()
+        suffix = "-val" if self.isval else ""
         if self.log_file:
-            __class__.save(self.idx, log_dict, self.log_file)
-        print(self.idx, log_dict)
+            __class__.save(self.idx, suffix, log_dict, self.log_file)
+        if self.wabrun:
+            __class__.save_wab(self.idx, suffix, log_dict, self.wabrun)
+        print(f"{self.idx}{suffix}", log_dict)
         return log_dict
 
-    @staticmethod
     @pt.inference_mode()
-    def save(key, avg_dict, log_file):
-        line = json.dumps({key: avg_dict})
+    @staticmethod
+    def save(key, suffix, log_dict, log_file):
+        key = f"{key}{suffix}"
+        line = json.dumps({key: log_dict})
         with open(log_file, "a") as f:
             f.write(line + "\n")
+
+    @pt.inference_mode()
+    @staticmethod
+    def save_wab(key, suffix, log_dict, wabrun):
+        if suffix:
+            log_dict = {f"{k}{suffix}": v for k, v in log_dict.items()}
+        wabrun.log(data=log_dict, step=key)
 
     @pt.inference_mode()
     def before_epoch(self, isval, **pack):

@@ -5,9 +5,9 @@ https://github.com/Genera1Z
 
 from pathlib import Path
 import pickle as pkl
-import time
 
 from einops import rearrange
+from tqdm import tqdm
 import cv2
 import numpy as np
 import torch as pt
@@ -15,7 +15,8 @@ import torch.nn.functional as ptnf
 import torch.utils.data as ptud
 
 from .dataset import lmdb_open_read, lmdb_open_write
-from ..util_datum import draw_segmentation_np, VideoCodec, mask_segment_to_bbox_np
+from ..util import concurrent_pool
+from ..util_datum import mask_segment_to_bbox_np, draw_segmentation_np
 
 
 class MOVi(ptud.Dataset):
@@ -29,7 +30,7 @@ class MOVi(ptud.Dataset):
     Example
     ```
     dataset = MOVi(
-        data_file="movi_d/train.lmdb",
+        data_file="movi_c/train.lmdb",
         extra_keys=["segment", "bbox", "flow", "depth"],
         base_dir=Path("/media/GeneralZ/Storage/Static/datasets"),
     )
@@ -39,7 +40,7 @@ class MOVi(ptud.Dataset):
             segment=sample["segment"].numpy(),
             bbox=sample["bbox"].numpy(),
             flow=sample["flow"].permute(0, 2, 3, 1).numpy(),
-            depth=sample["depth"].permute(0, 2, 3, 1).numpy(),
+            depth=sample["depth"].numpy(),
         )
     ```
     """
@@ -48,6 +49,7 @@ class MOVi(ptud.Dataset):
         self,
         data_file,
         extra_keys=["segment", "bbox", "flow", "depth"],
+        transform0=lambda **_: _,  # for t-slice only
         transform=lambda **_: _,
         base_dir: Path = None,
     ):
@@ -61,6 +63,7 @@ class MOVi(ptud.Dataset):
         env.close()
 
         self.extra_keys = extra_keys
+        self.transform0 = transform0
         self.transform = transform
 
     def __getitem__(self, index):
@@ -69,27 +72,39 @@ class MOVi(ptud.Dataset):
         - segment: (t,h,w,s), uint8 -> bool
         - bbox: (t,s,c=4), float32. both side normalized ltrb, only foreground
         - flow: (t,c=3,h,w), uint8 -> float32
-        - depth: (t,c=1,h,w), float32
+        - depth: (t,h,w), float32
         """
         if not hasattr(self, "env"):  # torch>2.6
             self.env = lmdb_open_read(self.data_file)
 
         with self.env.begin(write=False) as txn:
             sample0 = pkl.loads(txn.get(self.idxs[index]))
+        sample0 = self.transform0(**sample0)  # clip videos in advance for efficiency
         sample1 = {}
 
-        video0 = VideoCodec.decode_3uint8(sample0["video"])  # rgb
+        video0 = np.array(  # rgb
+            [cv2.imdecode(_, cv2.IMREAD_UNCHANGED) for _ in sample0["video"]]
+        )
         video = pt.from_numpy(video0).permute(0, 3, 1, 2)
         sample1["video"] = video  # (t,c,h,w) uint8
 
         if "segment" in self.extra_keys:
-            segment0 = VideoCodec.decode_1uint8(sample0["segment"])[..., 0]
+            segment0 = np.array(
+                [cv2.imdecode(_, cv2.IMREAD_UNCHANGED) for _ in sample0["segment"]]
+            )
             segment = pt.from_numpy(segment0)
             sample1["segment"] = segment  # (t,h,w) uint8
+            s0 = 1 + sample0["s"]  # bg+fg
 
         if "flow" in self.extra_keys:
             flowd = sample0["flow"]
-            flowd["data"] = VideoCodec.decode_xuint16(flowd["data"])
+            flowd["data"] = np.stack(
+                [
+                    np.array([cv2.imdecode(__, cv2.IMREAD_UNCHANGED) for __ in _])
+                    for _ in flowd["data"]
+                ],
+                -1,
+            )
             flow0 = __class__.unpack_uint16_to_float32(**flowd)
             flow0 = __class__.flow_to_rgb(flow0)
             flow = pt.from_numpy(flow0).permute(0, 3, 1, 2)
@@ -97,9 +112,11 @@ class MOVi(ptud.Dataset):
 
         if "depth" in self.extra_keys:
             depthd = sample0["depth"]
-            depthd["data"] = VideoCodec.decode_1uint16(depthd["data"])[..., 0]
+            depthd["data"] = np.array(
+                [cv2.imdecode(_, cv2.IMREAD_UNCHANGED) for _ in depthd["data"]]
+            )
             depth0 = __class__.unpack_uint16_to_float32(**depthd)
-            depth = pt.from_numpy(depth0)[:, None, :, :]
+            depth = pt.from_numpy(depth0)
             sample1["depth"] = depth  # (t,h,w) float32
 
         sample2 = self.transform(**sample1)
@@ -107,24 +124,25 @@ class MOVi(ptud.Dataset):
         if "segment" in self.extra_keys:
             segment2 = sample2["segment"]  # (t,h,w); index format
             # (t,h,w,s); mask format
-            segment3 = ptnf.one_hot(segment2.long()).bool()
+            segment2_ = ptnf.one_hot(segment2.long(), s0).bool()
 
-            t, h, w, s = segment3.shape
+            t, h, w, _ = segment2_.shape
 
             # ``RandomCrop`` and ``CenterCrop`` can diminish segments
-            cond = segment3.any([0, 1, 2])  # (s,)
-
-            segment3 = segment3[:, :, :, cond]
+            cond = segment2_.any([0, 1, 2])  # (s,)
+            segment3 = segment2_[:, :, :, cond]
             sample2["segment"] = segment3  # (t,h,w,s) bool
 
-            if "bbox" in self.extra_keys:  # TODO XXX [:, :, :, 1:]
-                segment3_ = rearrange(segment3[:, :, :, 1:], "t h w s -> h w (t s)")
+            if "bbox" in self.extra_keys:
+                segment3_ = rearrange(  # skip bg
+                    segment3[:, :, :, 1 if cond[0] else 0 :], "t h w s -> h w (t s)"
+                )
                 bbox2_ = pt.from_numpy(  # (t*s,c=4)
                     mask_segment_to_bbox_np(segment3_.numpy())
                 ).float()
                 bbox2 = rearrange(bbox2_, "(t s) c -> t s c", t=t)
-                bbox2[:, 0::2] /= w  # normalize
-                bbox2[:, 1::2] /= h
+                bbox2[:, :, 0::2] /= w  # normalize
+                bbox2[:, :, 1::2] /= h
                 sample2["bbox"] = bbox2  # (t,s,c=4) float32
 
         return sample2
@@ -132,11 +150,9 @@ class MOVi(ptud.Dataset):
     def __len__(self):
         return len(self.idxs)
 
-    FPS = 12
-
     @staticmethod
     def convert_dataset(
-        src_dir="/media/GeneralZ/Storage/Static/datasets_raw/tfds",
+        src_dir="/media/GeneralZ/Storage/Static/datasets_raw",
         tfds_name="movi_c/256x256:1.0.0",
         dst_dir=Path("movi_c"),
     ):
@@ -153,7 +169,7 @@ class MOVi(ptud.Dataset):
 
         Download MOVi series datasets. Remember to install gsutil first https://cloud.google.com/storage/docs/gsutil_install
         ```bash
-        cd local/path/to/movi_c/
+        cd local/path/to/movi_c/256x256/
         gsutil -m cp -r gs://kubric-public/tfds/movi_c/256x256/1.0.0 .
         # download movi_a, b, d, e, f in the similar way if needed
         ```
@@ -170,6 +186,7 @@ class MOVi(ptud.Dataset):
         ```
         """
         dst_dir.mkdir(parents=True, exist_ok=True)
+        splits = dict(train="train", val="validation")
 
         from clu import deterministic_data
         import tensorflow as tf
@@ -179,13 +196,13 @@ class MOVi(ptud.Dataset):
         _gpus = tf.config.list_physical_devices("GPU")
         [tf.config.experimental.set_memory_growth(_, True) for _ in _gpus]
 
-        for split in ["train", "validation"]:
+        for split, split_name in splits.items():
             print(split)
 
             dataset_builder = tfds.builder(tfds_name, data_dir=src_dir)
             dataset_split = deterministic_data.get_read_instruction_for_host(
-                split,
-                dataset_builder.info.splits[split].num_examples,
+                split_name,
+                dataset_builder.info.splits[split_name].num_examples,
             )
             dataset = deterministic_data.create_dataset(
                 dataset_builder,
@@ -200,9 +217,8 @@ class MOVi(ptud.Dataset):
 
             keys = []
             txn = lmdb_env.begin(write=True)
-            t0 = time.time()
 
-            for i, sample0 in enumerate(dataset):
+            for i, sample0 in enumerate(tqdm(dataset)):
                 sample1 = __class__.tensorflow2pytorch_nested_mapping(
                     sample0, tfpfo, tf
                 )
@@ -216,13 +232,14 @@ class MOVi(ptud.Dataset):
                 flow = sample2["flow"]  # (t,h,w,c=3) uint8 dict
                 depth = sample2["depth"]  # (t,h,w) uint32 dict
 
+                s = segment.max()  # only fg
+                assert s == bbox.shape[1]
+
+                # segment_msk = ptnf.one_hot(pt.from_numpy(segment).long()).bool().numpy()
                 # flow0 = __class__.unpack_uint16_to_float32(**flow)
                 # flow0 = __class__.flow_to_rgb(flow0)
-                # depth0 = __class__.unpack_uint16_to_float32(**depth)[:, :, :, None]
-                # __class__.visualiz(video, segment, bbox, flow0, depth0, wait=0)
-
-                sample_key = f"{i:06d}".encode("ascii")
-                keys.append(sample_key)
+                # depth0 = __class__.unpack_uint16_to_float32(**depth)
+                # __class__.visualiz(video, segment_msk, bbox, flow0, depth0, wait=0)
 
                 assert video.shape == (24, 256, 256, 3) and video.dtype == np.uint8
                 assert segment.shape == (24, 256, 256) and segment.dtype == np.uint8
@@ -241,21 +258,32 @@ class MOVi(ptud.Dataset):
                     and depth["data"].dtype == np.uint16
                 )
 
+                sample_key = f"{i:06d}".encode("ascii")
+                keys.append(sample_key)
+
+                # For compression rate, cv2's png (image) is as good as PyAV's libx264rgb or ffv1 (video).
+                enc_param = [
+                    cv2.IMWRITE_PNG_COMPRESSION,
+                    9,
+                    cv2.IMWRITE_PNG_STRATEGY,
+                    cv2.IMWRITE_PNG_STRATEGY_FILTERED,
+                ]
+                efunc = lambda _: cv2.imencode(".png", _, enc_param)[1]
                 sample_dict = dict(  # lossless video encoding always has some losses
-                    video=VideoCodec.encode_3uint8(video, __class__.FPS),
-                    segment=VideoCodec.encode_1uint8(
-                        segment[:, :, :, None], __class__.FPS
-                    ),
+                    video=concurrent_pool(efunc, [video]),
+                    segment=concurrent_pool(efunc, [segment]),
+                    s=s,
                     bbox=bbox,
                     flow=dict(
-                        data=VideoCodec.encode_xuint16(flow["data"], __class__.FPS),
+                        data=[
+                            concurrent_pool(efunc, [flow["data"][:, :, :, _]])
+                            for _ in range(flow["data"].shape[-1])
+                        ],
                         min=flow["min"],
                         max=flow["max"],
                     ),
                     depth=dict(
-                        data=VideoCodec.encode_1uint16(
-                            depth["data"][:, :, :, None], __class__.FPS
-                        ),
+                        data=concurrent_pool(efunc, [depth["data"]]),
                         min=depth["min"],
                         max=depth["max"],
                     ),
@@ -272,8 +300,6 @@ class MOVi(ptud.Dataset):
             txn.put(b"__keys__", pkl.dumps(keys))
             txn.commit()
             lmdb_env.close()
-
-            print((time.time() - t0) / (i + 1))
 
     @staticmethod
     def tensorflow2pytorch_nested_mapping(mapping: dict, tfpfo, tf):
@@ -377,55 +403,60 @@ class MOVi(ptud.Dataset):
     @staticmethod
     def visualiz(video, segment=None, bbox=None, flow=None, depth=None, wait=0):
         """
-        - video: bgr format, shape=(t,h,w,c=3), uint8
-        - segment: index format, shape=(t,h,w,s), bool
-        - bbox: both side normalized ltrb, shape=(t,s,c=4), float32
-        - flow: bgr or rgb (whichever), shape=(t,h,w,c=3), uint8
-        - depth: shape=(t,h,w,c=1), float32
+        - video: (t,h,w,c=3) uint8, rgb format
+        - segment: (t,h,w,s) bool, mask format
+        - bbox: (t,s,c=4) float32, ltrb format, dual normalized
+        - flow: (t,h,w,c=3) uint8, rgb format
+        - depth: (t,h,w) float32
         """
-        assert video.ndim == 4 and video.shape[3] == 3 and video.dtype == np.uint8
+        t, h, w, cv = video.shape
+        assert cv == 3 and video.dtype == np.uint8
 
         if segment is not None:
-            assert segment.ndim == 4 and segment.dtype == bool
+            t, h, w, cs = segment.shape
+            assert segment.dtype == bool
 
-        if bbox is not None and bbox.shape[0]:
-            assert bbox.ndim == 3 and bbox.shape[2] == 4 and bbox.dtype == np.float32
-            t, h, w, c = video.shape
-            bbox[:, :, 0::2] *= w
-            bbox[:, :, 1::2] *= h
-            bbox = np.round(bbox).astype("int")
+        if bbox is not None:
+            t, s, cb = bbox.shape
+            assert cb == 4 and bbox.dtype == np.float32
+            if segment is not None:
+                assert cs - s in [0, 1]
+            bbox = (bbox.copy() * [w, h, w, h]).round().astype(int)
 
         if flow is not None:
-            assert flow.ndim == 4 and flow.shape[3] == 3 and flow.dtype == np.uint8
+            t, h, w, cf = flow.shape
+            assert cf == 3 and flow.dtype == np.uint8
 
         if depth is not None:
-            assert depth.ndim == 4 and depth.shape[3] == 1 and depth.dtype == np.float32
+            t, h, w = depth.shape
+            assert depth.dtype == np.float32
             dmin = depth.min()
             dmax = depth.max()
             depth = (depth - dmin) / (dmax - dmin)
 
-        c1 = (63, 127, 255)
+        c1 = (255, 255, 255)
         imgs = []
         segs = []
 
-        for t, img in enumerate(video):
-            if bbox is not None and len(bbox) > 0:
-                for b in bbox[t]:
-                    cv2.rectangle(img, b[:2], b[2:], color=c1)
-
+        for ti, img in enumerate(video):
             cv2.imshow("v", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
             imgs.append(img)
 
             if segment is not None:
-                seg = draw_segmentation_np(img, segment[t], alpha=0.75)
+                seg = draw_segmentation_np(img, segment[ti, :, :, :], alpha=0.75)
+
+                if bbox is not None and bbox.shape[0]:
+                    for box in bbox[ti, :, :]:
+                        seg = cv2.rectangle(seg, box[:2], box[2:], color=c1)
+
                 cv2.imshow("s", cv2.cvtColor(seg, cv2.COLOR_RGB2BGR))
                 segs.append(seg)
 
             if flow is not None:
-                cv2.imshow("f", cv2.cvtColor(flow[t], cv2.COLOR_RGB2BGR))
+                cv2.imshow("f", cv2.cvtColor(flow[ti, :, :, :], cv2.COLOR_RGB2BGR))
 
             if depth is not None:
-                cv2.imshow("d", depth[t])
+                cv2.imshow("d", depth[ti, :, :])
 
             cv2.waitKey(wait)
 

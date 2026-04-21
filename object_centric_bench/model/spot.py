@@ -112,7 +112,7 @@ class AR9TransformerDecoder(nn.Module):
     def __init__(
         self,
         resolut,
-        vfm_dim,
+        emb_dim,
         posit_embed,  # 1d
         project1,
         project2,
@@ -131,7 +131,7 @@ class AR9TransformerDecoder(nn.Module):
             self.perm_v = "default"
         self.perm_idx = list(range(len(self.perm)))
 
-        self.bos = nn.Parameter(pt.randn(len(self.perm), 1, 1, vfm_dim) * vfm_dim**-0.5)
+        self.bos = nn.Parameter(pt.randn(len(self.perm), 1, 1, emb_dim) * emb_dim**-0.5)
         self.posit_embed = posit_embed
         self.register_buffer(
             "mask",
