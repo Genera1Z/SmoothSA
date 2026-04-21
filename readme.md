@@ -76,7 +76,7 @@ Official source code, model checkpoints and training logs for paper "**Smoothing
 
 ## 🚀 Converted Datasets
 
-Datasets ClevrTex, COCO, VOC, MOVi-C, MOVi-D and YTVIS, which are converted into LMDB format and can be used off-the-shelf, are available as below.
+Datasets ClevrTex, COCO, VOC, MOVi-C, MOVi-D, MOVi-E, YTVIS-HQ and YTVIS-2022, which are converted into LMDB format and can be used off-the-shelf, are available as below.
 - [dataset-clevrtex](https://github.com/Genera1Z/VQ-VFM-OCL/releases/tag/dataset-clevrtex): converted dataset [ClevrTex](https://www.robots.ox.ac.uk/~vgg/data/clevrtex).
 - [dataset-coco](https://github.com/Genera1Z/VQ-VFM-OCL/releases/tag/dataset-coco): converted dataset [COCO](https://cocodataset.org).
 - [dataset-voc](https://github.com/Genera1Z/VQ-VFM-OCL/releases/tag/dataset-voc): converted dataset [VOC](http://host.robots.ox.ac.uk/pascal/VOC).
