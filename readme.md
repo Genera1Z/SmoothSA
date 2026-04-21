@@ -91,13 +91,13 @@ Datasets ClevrTex, COCO, VOC, MOVi-C, MOVi-D and YTVIS, which are converted into
 ## 🧠 Model Checkpoints & Training Logs
 
 **The checkpoints and training logs (@ random seeds 42, 43 and 44) for all models** are available as [releases](https://github.com/Genera1Z/SmoothSA/releases). All backbones are unified as DINO2-S/14.
-- [archive-smoothsa](https://github.com/Genera1Z/SmoothSA/releases/tag/archive-smoothsa): Our SmoothSA trained on datasets ClevrTex, COCO, VOC, MOVi-C/D and YTVIS.
+- [archive-smoothsa](https://github.com/Genera1Z/SmoothSA/releases/tag/archive-smoothsa): Our SmoothSA trained on datasets ClevrTex, COCO, VOC, MOVi-C/D/E and YTVIS-HQ, YTVIS-2022.
     - Model checkpoints and training logs of our own method.
 - [archive-spot](https://github.com/Genera1Z/SmoothSA/releases/tag/archive-spot): SPOT on ClevrTex, COCO and VOC.
     - My implementation of paper **SPOT: Self-Training with Patch-Order Permutation for Object-Centric Learning with Autoregressive Transformers**, CVPR 2024.
 - For other image OCL baselines, **SLATE**, **DINOSAUR**, **SlotDiffusion** and **DIAS**, please check repo [VQ-VFM-OCL](https://github.com/Genera1Z/VQ-VFM-OCL?tab=readme-ov-file#-model-checkpoints--training-logs) and [DIAS](https://github.com/Genera1Z/DIAS?tab=readme-ov-file#-model-checkpoints--training-logs);
 - For other video OCL baselines, **VideoSAUR**, **SlotContrast** and **RandSF.Q**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-model-checkpoints--training-logs).
-- [archive-recogn](https://github.com/Genera1Z/SmoothSA/releases/tag/archive-recogn): Object recognition models based on our SmoothSA and baseline SPOT, trained on datasets COCO and YTVIS.
+- [archive-recogn](https://github.com/Genera1Z/SmoothSA/releases/tag/archive-recogn): Object recognition models based on our SmoothSA and baseline SPOT, trained on datasets COCO and YTVIS-HQ, YTVIS-2022.
     - Slots extracted by SmoothSA or SPOT are matched with ground-truth object segmentations by some threshold, and the matched slots are used to train category classification and bounding box regression.
 - For other object recognition baselines, **RandSF.Q** and **SlotContrast**, please check repo [RandSF.Q](https://github.com/Genera1Z/RandSF.Q?tab=readme-ov-file#-model-checkpoints--training-logs).
 
