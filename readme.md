@@ -13,7 +13,7 @@ Slot Attention (SA) and its variants lie at the heart of mainstream Object-Centr
 
 
 
-<!-- ## 🎉 Accepted to ICLR 2026 as a Poster -->
+## 🎉 Accepted to ICML 2026 as a Poster
 
 Official source code, model checkpoints and training logs for paper "**Smoothing Slot Attention Iterations and Recurrences**".
 
