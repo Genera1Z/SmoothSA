@@ -166,10 +166,10 @@ My further research works on OCL can be found in [my repos](https://github.com/G
 
 If you find this repo useful, please cite our work.
 ```
-@article{zhao2025smoothsa,
+@article{zhao2026smoothsa,
   title={{Smoothing Slot Attention Iterations and Recurrences}},
   author={Zhao, Rongzhen and Yang, Wenyan and Kannala, Juho and Pajarinen, Joni},
-  journal={arXiv:2508.05417},
-  year={2025}
+  journal={ICML},
+  year={2026}
 }
 ```
