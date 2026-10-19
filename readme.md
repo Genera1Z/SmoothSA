@@ -3,8 +3,9 @@
 
 
 [![](https://img.shields.io/badge/arXiv-2508.05417-red)](https://arxiv.org/abs/2508.05417)
-[![](https://img.shields.io/badge/explain-poster-yellow)](poster.pdf)
-[![](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![](https://img.shields.io/badge/explain-poster-orange)](poster.pdf)
+[![](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+[![](https://img.shields.io/badge/seeds-42,43,44-green)](LICENSE)
 [![](https://img.shields.io/badge/model-checkpoints-blue)](https://github.com/Genera1Z/SmoothSA?tab=readme-ov-file#-model-checkpoints--training-logs)
 [![](https://img.shields.io/badge/training-logs-purple)](https://github.com/Genera1Z/SmoothSA?tab=readme-ov-file#-model-checkpoints--training-logs)
 
